@@ -11,6 +11,7 @@ const terminalStatuses = new Map();
 let terminalStatusTimer = null;
 let terminalSeq = 1;
 const WORKSPACES_DIRNAME = 'workspaces';
+const APP_STATE_FILENAME = 'app-state.json';
 let allowWindowClose = false;
 
 function getWorkspacesDir() {
@@ -19,6 +20,43 @@ function getWorkspacesDir() {
 
 function ensureWorkspacesDir() {
   fs.mkdirSync(getWorkspacesDir(), { recursive: true });
+}
+
+function getAppStatePath() {
+  return path.join(app.getPath('userData'), APP_STATE_FILENAME);
+}
+
+function readAppState() {
+  try {
+    const fullPath = getAppStatePath();
+    if (!fs.existsSync(fullPath)) {
+      return {};
+    }
+    const data = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+    return data && typeof data === 'object' ? data : {};
+  } catch (_error) {
+    return {};
+  }
+}
+
+function writeAppState(partial = {}) {
+  const nextState = {
+    ...readAppState(),
+    ...partial
+  };
+  fs.writeFileSync(getAppStatePath(), JSON.stringify(nextState, null, 2), 'utf8');
+  return nextState;
+}
+
+function getLastOpenedWorkspaceId() {
+  const state = readAppState();
+  return state.lastOpenedWorkspaceId ? String(state.lastOpenedWorkspaceId) : null;
+}
+
+function setLastOpenedWorkspaceId(id) {
+  writeAppState({
+    lastOpenedWorkspaceId: id ? String(id) : null
+  });
 }
 
 function sanitizeWorkspaceName(name) {
@@ -478,8 +516,12 @@ ipcMain.handle('workspace:list', async () => {
 ipcMain.handle('workspace:load', async (_event, id) => {
   try {
     const workspace = readWorkspace(id);
+    setLastOpenedWorkspaceId(workspace.id);
     return { ok: true, workspace };
   } catch (error) {
+    if (String(error?.message || '') === 'Workspace not found' && getLastOpenedWorkspaceId() === String(id)) {
+      setLastOpenedWorkspaceId(null);
+    }
     return { ok: false, error: error?.message || String(error) };
   }
 });
@@ -487,9 +529,18 @@ ipcMain.handle('workspace:load', async (_event, id) => {
 ipcMain.handle('workspace:save', async (_event, payload = {}) => {
   try {
     const workspace = saveWorkspace(payload.workspace || payload);
+    setLastOpenedWorkspaceId(workspace.id);
     return { ok: true, workspace };
   } catch (error) {
     return { ok: false, error: error?.message || String(error) };
+  }
+});
+
+ipcMain.handle('workspace:last-opened', async () => {
+  try {
+    return { ok: true, id: getLastOpenedWorkspaceId() };
+  } catch (error) {
+    return { ok: false, error: error?.message || String(error), id: null };
   }
 });
 

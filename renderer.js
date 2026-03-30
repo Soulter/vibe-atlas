@@ -370,6 +370,17 @@ async function refreshWorkspaceList() {
   renderWorkspaceList();
 }
 
+async function restoreLastOpenedWorkspace() {
+  const result = await ipcRenderer.invoke('workspace:last-opened');
+  const id = result?.ok && result.id ? String(result.id) : null;
+  if (!id) {
+    return false;
+  }
+
+  await openWorkspace(id);
+  return currentWorkspace.id === id;
+}
+
 function toggleAppMenu(forceOpen = null) {
   if (!appMenuPanel || !appMenuButton) {
     return;
@@ -2240,7 +2251,6 @@ setPan(40, 40);
 applyViewportToolMode(activeToolMode);
 applyThemeToAllTerminals();
 setCurrentWorkspace(currentWorkspace);
-refreshWorkspaceList();
 updateZoomBar();
 setEmptyStateArmed(true);
 updateProtip();
@@ -2249,6 +2259,11 @@ if (zoomProtip) {
     advanceProtip();
   });
 }
+
+void (async () => {
+  await refreshWorkspaceList();
+  await restoreLastOpenedWorkspace();
+})();
 
 minimapWorld.addEventListener('mousedown', (event) => {
   if (isEmptyStateVisible()) {

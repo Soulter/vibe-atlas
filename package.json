@@ -3,7 +3,10 @@
   "version": "0.0.1",
   "description": "Manage multiple terminals on a shared canvas for batch vibe coding.",
   "private": true,
-  "author": "Soulter",
+  "author": {
+    "name": "Soulter",
+    "email": "soulter618@gmail.com"
+  },
   "main": "main.js",
   "type": "commonjs",
   "scripts": {
@@ -48,6 +51,7 @@
       ]
     },
     "linux": {
+      "maintainer": "Soulter <soulter618@gmail.com>",
       "target": [
         "AppImage",
         "deb"

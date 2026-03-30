@@ -3,14 +3,15 @@
   "version": "0.0.1",
   "description": "Manage multiple terminals on a shared canvas for batch vibe coding.",
   "private": true,
+  "author": "Soulter",
   "main": "main.js",
   "type": "commonjs",
   "scripts": {
     "start": "electron .",
-    "dist": "npx electron-builder",
-    "dist:mac": "npx electron-builder --mac",
-    "dist:win": "npx electron-builder --win",
-    "dist:linux": "npx electron-builder --linux"
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux"
   },
   "build": {
     "appId": "com.soulter.vibeatlas",
@@ -55,8 +56,11 @@
     }
   },
   "dependencies": {
-    "electron": "^35.0.0",
     "node-pty": "^1.1.0",
     "xterm": "^4.0.0"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^26.8.1"
   }
 }

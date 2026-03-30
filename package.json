@@ -1,0 +1,62 @@
+{
+  "name": "vibe-atlas",
+  "version": "0.1.0",
+  "description": "Manage multiple terminals on a shared canvas for batch vibe coding.",
+  "private": true,
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "npx electron-builder",
+    "dist:mac": "npx electron-builder --mac",
+    "dist:win": "npx electron-builder --win",
+    "dist:linux": "npx electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.soulter.vibeatlas",
+    "productName": "Vibe Atlas",
+    "files": [
+      "index.html",
+      "main.js",
+      "renderer.js",
+      "styles.css",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "asar": true,
+    "publish": [
+      {
+        "provider": "github"
+      }
+    ],
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development"
+    }
+  },
+  "dependencies": {
+    "electron": "^35.0.0",
+    "node-pty": "^1.1.0",
+    "xterm": "^4.0.0"
+  }
+}

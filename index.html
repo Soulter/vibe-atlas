@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vibe Atlas</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Code:ital,wght@0,300..800;1,300..800&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./node_modules/xterm/css/xterm.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div id="viewport">
+        <div id="app-menu">
+          <button id="app-menu-button" type="button" title="打开菜单" aria-label="打开菜单">
+            <span class="tool-icon mdi mdi-menu" aria-hidden="true"></span>
+          </button>
+          <div id="menu-saved-indicator" class="hidden">Saved!</div>
+          <div id="app-menu-panel" class="hidden">
+            <div class="workspace-menu-heading">Workspace</div>
+            <div id="workspace-current-name" class="workspace-current-name">Untitled Workspace</div>
+            <div class="workspace-menu-actions">
+              <button id="menu-new-workspace" type="button" title="新建工作区">New Workspace</button>
+              <button id="menu-save-workspace" type="button" title="保存当前工作区">Save Workspace</button>
+              <button id="menu-save-workspace-as" type="button" title="另存为新的工作区">Save Workspace As</button>
+            </div>
+            <div class="workspace-menu-heading">Saved Workspaces</div>
+            <div id="workspace-list" class="workspace-list"></div>
+          </div>
+        </div>
+        <div id="app-brand">
+          <span class="app-brand-name">Vibe Atlas</span>
+          <span class="app-brand-version">v0.0.1</span>
+        </div>
+        <div id="empty-state">
+          <div class="empty-state-brand">Vibe Atlas</div>
+          <div class="empty-state-copy">
+            A canvas workspace for orchestrating multiple terminals, notes, and batch vibe coding sessions.
+          </div>
+          <div class="empty-state-meta">
+            Repository:
+            <a href="https://github.com/Soulter/vibe-atlas" target="_blank" rel="noreferrer">https://github.com/Soulter/vibe-atlas</a>
+          </div>
+          <div class="empty-state-shortcuts">
+            <span><kbd>Cmd</kbd><kbd>T</kbd> New terminal</span>
+            <span><kbd>Double click</kbd> New note</span>
+            <span><kbd>Window tool</kbd> Drag to create</span>
+          </div>
+        </div>
+        <div id="zoom-bar">
+          <button id="zoom-out" type="button" title="缩小 10%" aria-label="缩小 10%">-</button>
+          <div id="zoom-value">100%</div>
+          <button id="zoom-in" type="button" title="放大 10%" aria-label="放大 10%">+</button>
+          <button id="zoom-protip" type="button" title="切换下一条提示" aria-label="切换下一条提示">
+            <span class="zoom-protip-label">Protip:</span>
+            <span id="zoom-protip-text">Cmd/Ctrl+S saves the workspace</span>
+          </button>
+        </div>
+        <div id="canvas"></div>
+        <div id="minimap">
+          <div id="minimap-world">
+            <div id="minimap-viewport"></div>
+          </div>
+        </div>
+        <div id="selection-overlay">
+          <div id="selection-box"></div>
+        </div>
+        <div id="tool-hub">
+          <button id="tool-reset" type="button" title="复位视图" aria-label="复位视图">
+            <span class="tool-icon mdi mdi-crop-free" aria-hidden="true"></span>
+          </button>
+          <button id="tool-hover" type="button" title="hover（拖拽窗口）" aria-label="hover">
+            <span class="tool-icon mdi mdi-cursor-move" aria-hidden="true"></span>
+          </button>
+          <button id="tool-window" type="button" title="窗口（框选创建）" aria-label="窗口">
+            <span class="tool-icon mdi mdi-window-maximize" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div id="context-menu" class="hidden">
+          <button id="context-add-terminal" title="在这里创建一个新的终端窗口">添加 Terminal</button>
+        </div>
+        <div id="dialog-overlay" class="hidden">
+          <div id="dialog-card">
+            <div id="dialog-title">Workspace Name</div>
+            <div id="dialog-message">Name this workspace.</div>
+            <input id="dialog-input" type="text" autocomplete="off" spellcheck="false" />
+            <div id="dialog-actions">
+              <button id="dialog-cancel" type="button" title="取消当前操作">Cancel</button>
+              <button id="dialog-confirm" type="button" title="确认并继续">Confirm</button>
+            </div>
+          </div>
+        </div>
+        <div id="app-tooltip" class="hidden"></div>
+      </div>
+    </div>
+    <script src="./renderer.js"></script>
+  </body>
+</html>

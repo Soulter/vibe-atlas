@@ -32,6 +32,8 @@ const zoomBarValue = document.getElementById('zoom-value');
 const zoomOutBtn = document.getElementById('zoom-out');
 const zoomInBtn = document.getElementById('zoom-in');
 const emptyState = document.getElementById('empty-state');
+const emptyStateNewTerminalBtn = document.getElementById('empty-state-new-terminal');
+const emptyStateNewNoteBtn = document.getElementById('empty-state-new-note');
 const contextMenu = document.getElementById('context-menu');
 const contextAddBtn = document.getElementById('context-add-terminal');
 const toolResetBtn = document.getElementById('tool-reset');
@@ -187,7 +189,7 @@ function setShiftPanMode(active) {
 }
 
 function startViewportPan(event) {
-  if (event.button !== 0) {
+  if (event.button !== 0 && event.button !== 1) {
     return false;
   }
   event.stopPropagation();
@@ -1846,6 +1848,22 @@ if (saveWorkspaceAsBtn) {
   });
 }
 
+if (emptyStateNewTerminalBtn) {
+  emptyStateNewTerminalBtn.addEventListener('click', async () => {
+    consumeEmptyState();
+    const center = getViewportCenterWorldPoint();
+    await addTerminalAtPosition(center.x, center.y);
+  });
+}
+
+if (emptyStateNewNoteBtn) {
+  emptyStateNewNoteBtn.addEventListener('click', () => {
+    consumeEmptyState();
+    const center = getViewportCenterWorldPoint();
+    createCanvasNote(center.x + 210, center.y + 120, '', 220);
+  });
+}
+
 if (dialogOverlay) {
   dialogOverlay.addEventListener('mousedown', (event) => {
     if (event.target === dialogOverlay) {
@@ -1969,7 +1987,7 @@ viewport.addEventListener('mousedown', (event) => {
     return;
   }
 
-  if (shiftPanMode) {
+  if (shiftPanMode || event.button === 1) {
     startViewportPan(event);
     return;
   }
@@ -1982,15 +2000,6 @@ viewport.addEventListener('mousedown', (event) => {
   if (activeToolMode === TOOL_MODES.HOVER && event.target.closest('.terminal-window')) {
     const id = event.target.closest('.terminal-window').dataset.id;
     startWindowDrag(id, event);
-    return;
-  }
-
-  if (!event.target.closest('.terminal-window')) {
-    isPanning = true;
-    const p = toViewportPoint(event.clientX, event.clientY);
-    panOrigin = { x: p.x - panX, y: p.y - panY };
-    viewport.classList.add('panning');
-    event.preventDefault();
     return;
   }
 });

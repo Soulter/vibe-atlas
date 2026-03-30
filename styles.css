@@ -23,7 +23,7 @@ body,
   position: relative;
   flex: 1;
   overflow: hidden;
-  cursor: grab;
+  cursor: default;
   background-color: #111111;
   background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0MCcgaGVpZ2h0PSc0MCcgdmlld0JveD0nMCAwIDQwIDQwJz48bGluZSB4MT0nMCcgeTE9JzAnIHgyPSc0MCcgeTI9JzAnIHN0cm9rZT0nI2ZmZmZmZicgc3Ryb2tlLXdpZHRoPScxJyBvcGFjaXR5PScwLjA2Jy8+PGxpbmUgeDE9JzAnIHkxPScwJyB4Mj0nMCcgeTI9JzQwJyBzdHJva2U9JyNmZmZmZmYnIHN0cm9rZS13aWR0aD0nMScgb3BhY2l0eT0nMC4wNicvPjwvc3ZnPg==");
   background-repeat: repeat;
@@ -294,6 +294,40 @@ body,
   font-size: 11px;
   font-weight: 600;
   font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+}
+
+.empty-state-actions {
+  margin-top: 22px;
+  display: inline-flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.empty-state-actions button {
+  min-width: 136px;
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+
+.empty-state-actions button:hover {
+  background: rgba(255, 255, 255, 0.14);
+  transform: translateY(-1px);
+}
+
+.empty-state-actions button:active {
+  transform: translateY(0);
 }
 
 #zoom-bar {

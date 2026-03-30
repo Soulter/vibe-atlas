@@ -2,6 +2,8 @@
 
 Vibe Atlas is a canvas-based workspace for running and organizing multiple terminals, notes, and parallel coding sessions.
 
+<img width="600" height="1800" alt="image" src="https://github.com/user-attachments/assets/86bc5e90-2d4c-489c-a1aa-c2d9f7a7440f" />
+
 ## What it does
 
 - Place multiple terminal windows on a shared canvas

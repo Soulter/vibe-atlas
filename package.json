@@ -23,6 +23,7 @@
       "index.html",
       "main.js",
       "renderer.js",
+      "renderer",
       "styles.css",
       "package.json",
       "node_modules/**/*"

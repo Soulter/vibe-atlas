@@ -133,10 +133,15 @@ function readWorkspace(id) {
       left: Number.isFinite(Number(item?.left)) ? Number(item.left) : 0,
       top: Number.isFinite(Number(item?.top)) ? Number(item.top) : 0,
       width: Number.isFinite(Number(item?.width)) ? Math.max(120, Number(item.width)) : 220,
-      color: typeof item?.color === 'string' ? item.color.slice(0, 32) : '#fff8c4',
-      fontSize: Number.isFinite(Number(item?.fontSize)) ? Math.max(14, Math.min(64, Number(item.fontSize))) : 20,
+      color: typeof item?.color === 'string' ? item.color.slice(0, 32) : '#ffffff',
+      fontSize: Number.isFinite(Number(item?.fontSize)) ? Math.max(12, Math.min(64, Number(item.fontSize))) : 16,
       zIndex: Number.isFinite(Number(item?.zIndex)) ? Number(item.zIndex) : 5
-    })) : []
+    })) : [],
+    clipboardEntries: Array.isArray(data.clipboardEntries) ? data.clipboardEntries.slice(0, 100).map((item) => ({
+      text: typeof item?.text === 'string' ? item.text.slice(0, 20000) : '',
+      source: typeof item?.source === 'string' ? item.source.slice(0, 40) : 'App',
+      createdAt: Number.isFinite(Number(item?.createdAt)) ? Number(item.createdAt) : Date.now()
+    })).filter((item) => item.text.trim()) : []
   };
 }
 
@@ -172,10 +177,15 @@ function saveWorkspace(input = {}) {
       left: Number.isFinite(Number(item?.left)) ? Number(item.left) : 0,
       top: Number.isFinite(Number(item?.top)) ? Number(item.top) : 0,
       width: Number.isFinite(Number(item?.width)) ? Math.max(120, Number(item.width)) : 220,
-      color: typeof item?.color === 'string' ? item.color.slice(0, 32) : '#fff8c4',
-      fontSize: Number.isFinite(Number(item?.fontSize)) ? Math.max(14, Math.min(64, Number(item.fontSize))) : 20,
+      color: typeof item?.color === 'string' ? item.color.slice(0, 32) : '#ffffff',
+      fontSize: Number.isFinite(Number(item?.fontSize)) ? Math.max(12, Math.min(64, Number(item.fontSize))) : 16,
       zIndex: Number.isFinite(Number(item?.zIndex)) ? Number(item.zIndex) : 5
-    })) : []
+    })) : [],
+    clipboardEntries: Array.isArray(input.clipboardEntries) ? input.clipboardEntries.slice(0, 100).map((item) => ({
+      text: typeof item?.text === 'string' ? item.text.slice(0, 20000) : '',
+      source: typeof item?.source === 'string' ? item.source.slice(0, 40) : 'App',
+      createdAt: Number.isFinite(Number(item?.createdAt)) ? Number(item.createdAt) : Date.now()
+    })).filter((item) => item.text.trim()) : []
   };
 
   fs.writeFileSync(existingPath, JSON.stringify(payload, null, 2), 'utf8');

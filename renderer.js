@@ -31,6 +31,10 @@ const saveWorkspaceAsBtn = document.getElementById('menu-save-workspace-as');
 const zoomBarValue = document.getElementById('zoom-value');
 const zoomOutBtn = document.getElementById('zoom-out');
 const zoomInBtn = document.getElementById('zoom-in');
+const clipboardHub = document.getElementById('clipboard-hub');
+const clipboardCount = document.getElementById('clipboard-count');
+const clipboardList = document.getElementById('clipboard-list');
+const clipboardClearBtn = document.getElementById('clipboard-clear');
 const emptyState = document.getElementById('empty-state');
 const emptyStateNewTerminalBtn = document.getElementById('empty-state-new-terminal');
 const emptyStateNewNoteBtn = document.getElementById('empty-state-new-note');
@@ -39,6 +43,8 @@ const contextAddBtn = document.getElementById('context-add-terminal');
 const toolResetBtn = document.getElementById('tool-reset');
 const toolHoverBtn = document.getElementById('tool-hover');
 const toolWindowBtn = document.getElementById('tool-window');
+const toolTogglePreviewBtn = document.getElementById('tool-toggle-preview');
+const toolToggleClipboardBtn = document.getElementById('tool-toggle-clipboard');
 const selectionBox = document.getElementById('selection-box');
 const dialogOverlay = document.getElementById('dialog-overlay');
 const dialogTitle = document.getElementById('dialog-title');
@@ -58,6 +64,10 @@ let isPanning = false;
 let panOrigin = { x: 0, y: 0 };
 let shiftPanMode = false;
 const isMac = process.platform === 'darwin';
+const MAX_CLIPBOARD_ENTRIES = 100;
+const defaultNoteColor = '#ffffff';
+const defaultNoteFontSize = 16;
+const terminalFontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
 
 let dragging = null;
 let resizing = null;
@@ -89,6 +99,9 @@ let dialogResolver = null;
 let activeToolMode = TOOL_MODES.HOVER;
 let saveIndicatorTimer = 0;
 let protipIndex = 0;
+let terminalWindowResizeTimer = 0;
+let clipboardSeq = 1;
+let clipboardEntries = [];
 
 function showTooltip(text, clientX, clientY) {
   if (!appTooltip || !text) {
@@ -297,6 +310,137 @@ function escapeHtml(value) {
     .replaceAll('>', '&gt;');
 }
 
+function formatClipboardTime(timestamp) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  return date.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function getCopySourceLabel() {
+  const active = document.activeElement;
+  if (active?.closest?.('.terminal-window')) {
+    return 'Terminal';
+  }
+  if (active?.closest?.('.canvas-note')) {
+    return 'Note';
+  }
+  const selectionNode = window.getSelection()?.anchorNode;
+  const selectionElement = selectionNode?.nodeType === Node.ELEMENT_NODE
+    ? selectionNode
+    : selectionNode?.parentElement;
+  if (selectionElement?.closest?.('.terminal-window')) {
+    return 'Terminal';
+  }
+  if (selectionElement?.closest?.('.canvas-note')) {
+    return 'Note';
+  }
+  return 'App';
+}
+
+function renderClipboardHub() {
+  if (!clipboardList || !clipboardCount) {
+    return;
+  }
+
+  clipboardCount.textContent = `${clipboardEntries.length} item${clipboardEntries.length === 1 ? '' : 's'}`;
+  clipboardList.innerHTML = '';
+
+  if (!clipboardEntries.length) {
+    const empty = document.createElement('div');
+    empty.className = 'clipboard-empty';
+    empty.textContent = 'Copy text inside Vibe Atlas';
+    clipboardList.appendChild(empty);
+    return;
+  }
+
+  clipboardEntries.forEach((entry) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'clipboard-item';
+    item.title = '点击复制这条记录';
+
+    const meta = document.createElement('div');
+    meta.className = 'clipboard-item-meta';
+    const source = document.createElement('span');
+    source.textContent = entry.source;
+    const time = document.createElement('span');
+    time.textContent = formatClipboardTime(entry.createdAt);
+    meta.appendChild(source);
+    meta.appendChild(time);
+
+    const preview = document.createElement('div');
+    preview.className = 'clipboard-item-preview';
+    preview.textContent = entry.text;
+
+    item.appendChild(meta);
+    item.appendChild(preview);
+    item.addEventListener('click', () => {
+      clipboard.writeText(entry.text);
+      item.classList.add('copied');
+      preview.textContent = '复制成功';
+      if (item.copyFeedbackTimer) {
+        clearTimeout(item.copyFeedbackTimer);
+      }
+      item.copyFeedbackTimer = window.setTimeout(() => {
+        item.copyFeedbackTimer = 0;
+        item.classList.remove('copied');
+        preview.textContent = entry.text;
+      }, 900);
+    });
+    clipboardList.appendChild(item);
+  });
+}
+
+function recordClipboardText(text, source = 'App') {
+  const normalized = String(text || '');
+  if (!normalized.trim()) {
+    return;
+  }
+
+  const now = Date.now();
+  const latest = clipboardEntries[0];
+  if (latest && latest.text === normalized && now - latest.createdAt < 700) {
+    return;
+  }
+
+  clipboardEntries.unshift({
+    id: clipboardSeq++,
+    text: normalized.slice(0, 20000),
+    source,
+    createdAt: now
+  });
+  if (clipboardEntries.length > MAX_CLIPBOARD_ENTRIES) {
+    clipboardEntries = clipboardEntries.slice(0, MAX_CLIPBOARD_ENTRIES);
+  }
+  renderClipboardHub();
+  scheduleWorkspaceAutoSave();
+}
+
+function serializeClipboardEntries() {
+  return clipboardEntries.slice(0, MAX_CLIPBOARD_ENTRIES).map((entry) => ({
+    text: String(entry.text || '').slice(0, 20000),
+    source: String(entry.source || 'App').slice(0, 40),
+    createdAt: Number.isFinite(Number(entry.createdAt)) ? Number(entry.createdAt) : Date.now()
+  })).filter((entry) => entry.text.trim());
+}
+
+function restoreClipboardEntries(entries = []) {
+  clipboardEntries = Array.isArray(entries)
+    ? entries.slice(0, MAX_CLIPBOARD_ENTRIES).map((entry) => ({
+      id: clipboardSeq++,
+      text: String(entry?.text || '').slice(0, 20000),
+      source: String(entry?.source || 'App').slice(0, 40),
+      createdAt: Number.isFinite(Number(entry?.createdAt)) ? Number(entry.createdAt) : Date.now()
+    })).filter((entry) => entry.text.trim())
+    : [];
+  renderClipboardHub();
+}
+
 function noteTextToHtml(value) {
   return escapeHtml(value).replace(/\n/g, '<br>');
 }
@@ -409,8 +553,8 @@ function serializeNoteView(view) {
     left: Number(view.el?.dataset?.x) || 0,
     top: Number(view.el?.dataset?.y) || 0,
     width: view.el?.offsetWidth || 220,
-    color: view.color || '#fff8c4',
-    fontSize: Number(view.fontSize) || 20,
+    color: view.color || defaultNoteColor,
+    fontSize: Number(view.fontSize) || defaultNoteFontSize,
     zIndex: Number(view.el?.style?.zIndex) || 5
   };
 }
@@ -428,7 +572,8 @@ function getWorkspaceSnapshot(override = {}) {
     windows: Array.from(terminalViews.values()).map((view) => serializeTerminalView(view)),
     notes: Array.from(noteViews.values())
       .map((view) => serializeNoteView(view))
-      .filter((item) => item.text)
+      .filter((item) => item.text),
+    clipboardEntries: serializeClipboardEntries()
   };
 }
 
@@ -516,7 +661,7 @@ function clearAllNotes() {
 }
 
 async function maybePersistCurrentWorkspace() {
-  const hasWorkspaceContent = terminalViews.size > 0 || noteViews.size > 0;
+  const hasWorkspaceContent = terminalViews.size > 0 || noteViews.size > 0 || clipboardEntries.length > 0;
   if (!hasWorkspaceContent && !currentWorkspace.id) {
     return true;
   }
@@ -550,13 +695,15 @@ async function createWorkspace() {
   suppressAutoSave = true;
   clearAllTerminalWindows();
   clearAllNotes();
+  restoreClipboardEntries([]);
   const result = await ipcRenderer.invoke('workspace:save', {
     workspace: {
       id: null,
       name,
       createdAt: null,
       windows: [],
-      notes: []
+      notes: [],
+      clipboardEntries: []
     }
   });
   suppressAutoSave = false;
@@ -596,6 +743,7 @@ async function openWorkspace(id) {
   suppressAutoSave = true;
   clearAllTerminalWindows();
   clearAllNotes();
+  restoreClipboardEntries(result.workspace.clipboardEntries || []);
   setCurrentWorkspace(result.workspace);
   setEmptyStateArmed((result.workspace.windows?.length || 0) === 0 && (result.workspace.notes?.length || 0) === 0);
   const hasRestoredTerminals = (result.workspace.windows?.length || 0) > 0;
@@ -671,6 +819,37 @@ function applyViewportToolMode(mode) {
   viewport.classList.remove('mode-hover', 'mode-window');
   viewport.classList.add(`mode-${mode}`);
   hideSelectionBox();
+}
+
+function setPreviewVisible(visible) {
+  if (!minimap) {
+    return;
+  }
+  const shouldShow = Boolean(visible);
+  minimap.classList.toggle('is-hidden', !shouldShow);
+  clipboardHub?.classList.toggle('preview-hidden', !shouldShow);
+  toolTogglePreviewBtn?.classList.toggle('active', shouldShow);
+  if (toolTogglePreviewBtn) {
+    toolTogglePreviewBtn.setAttribute('aria-pressed', shouldShow ? 'true' : 'false');
+  }
+  if (!shouldShow) {
+    isMiniMapDragging = false;
+    miniMapDragOffset = { x: 0, y: 0 };
+    return;
+  }
+  updateMiniMap();
+}
+
+function setClipboardVisible(visible) {
+  if (!clipboardHub) {
+    return;
+  }
+  const shouldShow = Boolean(visible);
+  clipboardHub.classList.toggle('is-hidden', !shouldShow);
+  toolToggleClipboardBtn?.classList.toggle('active', shouldShow);
+  if (toolToggleClipboardBtn) {
+    toolToggleClipboardBtn.setAttribute('aria-pressed', shouldShow ? 'true' : 'false');
+  }
 }
 
 function hideSelectionBox() {
@@ -921,7 +1100,7 @@ function getTerminalCellSize(term, body) {
 
   if (!Number.isFinite(cellWidth) || cellWidth <= 0 || !Number.isFinite(cellHeight) || cellHeight <= 0) {
     const styles = getComputedStyle(body);
-    const fontSize = parseFloat(styles.fontSize) || 13;
+    const fontSize = parseFloat(styles.fontSize) || 12;
     cellWidth = fontSize * 0.62;
     cellHeight = fontSize * 1.2;
   }
@@ -954,6 +1133,84 @@ function showSelectionBox(rect) {
   selectionBox.style.height = `${rect.height}px`;
 }
 
+function getCanvasTransformValue(nextScale = scale) {
+  return `translate(${panX}px, ${panY}px) scale(${nextScale})`;
+}
+
+function withUnscaledTerminalLayout(callback) {
+  if (Math.abs(scale - 1) < 0.001) {
+    return callback();
+  }
+
+  const previousTransform = canvas.style.transform;
+  canvas.style.transform = getCanvasTransformValue(1);
+  void canvas.offsetWidth;
+  try {
+    return callback();
+  } finally {
+    canvas.style.transform = previousTransform || getCanvasTransformValue(scale);
+    void canvas.offsetWidth;
+  }
+}
+
+function getEventInUnscaledElementSpace(event, element) {
+  if (!element || Math.abs(scale - 1) < 0.001) {
+    return event;
+  }
+
+  const rect = element.getBoundingClientRect();
+  return {
+    clientX: rect.left + ((event.clientX - rect.left) / scale),
+    clientY: rect.top + ((event.clientY - rect.top) / scale)
+  };
+}
+
+function installTerminalScaleAdapters(term) {
+  const mouseService = term?._core?._mouseService;
+  if (mouseService && !mouseService.__vibeAtlasScaleAdapterInstalled) {
+    const getCoords = mouseService.getCoords.bind(mouseService);
+    mouseService.getCoords = (event, element, ...args) => {
+      return getCoords(getEventInUnscaledElementSpace(event, element), element, ...args);
+    };
+    mouseService.__vibeAtlasScaleAdapterInstalled = true;
+  }
+
+  const renderService = term?._core?._renderService;
+  if (renderService && !renderService.__vibeAtlasScaleAdapterInstalled) {
+    const onDevicePixelRatioChange = renderService.onDevicePixelRatioChange.bind(renderService);
+    renderService.onDevicePixelRatioChange = () => {
+      return withUnscaledTerminalLayout(() => onDevicePixelRatioChange());
+    };
+    renderService.__vibeAtlasScaleAdapterInstalled = true;
+  }
+}
+
+function forceTerminalLayoutRefresh(view) {
+  const term = view?.terminal;
+  if (!term || view.closed) {
+    return;
+  }
+
+  withUnscaledTerminalLayout(() => {
+    const core = term?._core;
+    core?._charSizeService?.measure?.();
+    core?._renderService?.onDevicePixelRatioChange?.();
+    fitTerminalToBody(view);
+    term.refresh(0, Math.max(0, term.rows - 1));
+  });
+}
+
+function scheduleForceTerminalLayoutRefresh(view) {
+  if (!view || view.closed || view.forceRefreshRaf) {
+    return;
+  }
+
+  view.forceRefreshRaf = requestAnimationFrame(() => {
+    view.forceRefreshRaf = 0;
+    forceTerminalLayoutRefresh(view);
+  });
+}
+
 function fitTerminalToBody(view) {
   const term = view?.terminal;
   const wrapper = view?.wrapper;
@@ -966,14 +1223,17 @@ function fitTerminalToBody(view) {
     return;
   }
 
-  const { cellWidth, cellHeight } = getTerminalCellSize(term, body);
-
-  const cols = Math.max(10, Math.floor(body.clientWidth / cellWidth));
-  const rows = Math.max(3, Math.floor(body.clientHeight / cellHeight));
-  if (cols !== term.cols || rows !== term.rows) {
-    term.resize(cols, rows);
-    ipcRenderer.send('terminal:resize', { id: view.id, cols, rows });
-  }
+  withUnscaledTerminalLayout(() => {
+    const { cellWidth, cellHeight } = getTerminalCellSize(term, body);
+    const cols = Math.max(10, Math.floor(body.clientWidth / cellWidth));
+    const rows = Math.max(3, Math.floor(body.clientHeight / cellHeight));
+    if (cols !== term.cols || rows !== term.rows) {
+      term.resize(cols, rows);
+      ipcRenderer.send('terminal:resize', { id: view.id, cols, rows });
+    } else {
+      term.refresh(0, Math.max(0, term.rows - 1));
+    }
+  });
 }
 
 function scheduleFit(view) {
@@ -987,7 +1247,7 @@ function scheduleFit(view) {
 }
 
 function applyTransform() {
-  canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+  canvas.style.transform = getCanvasTransformValue(scale);
   const grid = baseGridSize * scale;
   viewport.style.backgroundSize = `${grid}px ${grid}px`;
   const offsetX = ((panX % grid) + grid) % grid;
@@ -1101,8 +1361,8 @@ function createTerminalWindow(id, left, top, width = 640, height = 420, options 
     drawBoldTextInBrightColors: true,
     fastScrollModifier: 'alt',
     fastScrollSensitivity: 5,
-    fontSize: 13,
-    fontFamily: '"Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace',
+    fontSize: 12,
+    fontFamily: terminalFontFamily,
     fontWeight: '400',
     fontWeightBold: '700',
     letterSpacing: 0,
@@ -1118,11 +1378,14 @@ function createTerminalWindow(id, left, top, width = 640, height = 420, options 
     rendererType: 'canvas'
   });
 
-  term.setOption('theme', terminalTheme);
-  term.open(body);
-  if (term.element) {
-    term.element.style.backgroundColor = terminalTheme.background;
-  }
+  withUnscaledTerminalLayout(() => {
+    term.setOption('theme', terminalTheme);
+    term.open(body);
+    if (term.element) {
+      term.element.style.backgroundColor = terminalTheme.background;
+    }
+  });
+  installTerminalScaleAdapters(term);
 
   term.attachCustomKeyEventHandler((event) => {
     const usesPrimaryModifier = isMac ? event.metaKey : event.ctrlKey;
@@ -1132,7 +1395,9 @@ function createTerminalWindow(id, left, top, width = 640, height = 420, options 
 
     const key = String(event.key || '').toLowerCase();
     if (key === 'c' && term.hasSelection()) {
-      clipboard.writeText(term.getSelection());
+      const selectedText = term.getSelection();
+      clipboard.writeText(selectedText);
+      recordClipboardText(selectedText, 'Terminal');
       return false;
     }
     if (key === 'a') {
@@ -1171,6 +1436,7 @@ function createTerminalWindow(id, left, top, width = 640, height = 420, options 
     persistedTitle: options.title || `Terminal #${id}`,
     resizeObserver: null,
     resizeRaf: 0,
+    forceRefreshRaf: 0,
     closed: false,
     isEditingTitle: false,
     previousTitle: null
@@ -1199,9 +1465,11 @@ function createTerminalWindow(id, left, top, width = 640, height = 420, options 
   }
 
   try {
-    fitTerminalToBody(view);
-    term.focus();
-    term.refresh(0, Math.max(0, term.rows - 1));
+    withUnscaledTerminalLayout(() => {
+      fitTerminalToBody(view);
+      term.focus();
+      term.refresh(0, Math.max(0, term.rows - 1));
+    });
   } catch (error) {
     console.error('Failed to finalize terminal view', id, error);
   }
@@ -1524,8 +1792,8 @@ function createCanvasNote(left, top, text = '', width = 220, options = {}) {
     content,
     widthHandle,
     colorInput,
-    color: options.color || '#fff8c4',
-    fontSize: Number.isFinite(Number(options.fontSize)) ? Number(options.fontSize) : 20
+    color: options.color || defaultNoteColor,
+    fontSize: Number.isFinite(Number(options.fontSize)) ? Number(options.fontSize) : defaultNoteFontSize
   };
   noteViews.set(id, view);
   applyNoteStyle(view);
@@ -1550,7 +1818,7 @@ function createCanvasNote(left, top, text = '', width = 220, options = {}) {
 
   sizeDownBtn.addEventListener('click', (event) => {
     event.stopPropagation();
-    view.fontSize = Math.max(14, view.fontSize - 2);
+    view.fontSize = Math.max(12, view.fontSize - 2);
     applyNoteStyle(view);
     syncNoteHeight(content);
     selectNote(view);
@@ -1568,7 +1836,7 @@ function createCanvasNote(left, top, text = '', width = 220, options = {}) {
 
   colorInput.addEventListener('input', (event) => {
     event.stopPropagation();
-    view.color = colorInput.value || '#fff8c4';
+    view.color = colorInput.value || defaultNoteColor;
     applyNoteStyle(view);
     selectNote(view);
     scheduleWorkspaceAutoSave();
@@ -1630,6 +1898,9 @@ function destroyTerminalWindow(id) {
   }
   if (view.resizeRaf) {
     cancelAnimationFrame(view.resizeRaf);
+  }
+  if (view.forceRefreshRaf) {
+    cancelAnimationFrame(view.forceRefreshRaf);
   }
   terminalViews.delete(String(id));
   document.body.style.userSelect = '';
@@ -1793,7 +2064,7 @@ viewport.addEventListener('contextmenu', (event) => {
 });
 
 viewport.addEventListener('dblclick', (event) => {
-  if (event.target.closest('.terminal-window, #minimap, #tool-hub, #app-menu, #app-brand, #context-menu, #dialog-overlay, .canvas-note, #zoom-bar')) {
+  if (event.target.closest('.terminal-window, #minimap, #tool-hub, #clipboard-hub, #app-menu, #app-brand, #context-menu, #dialog-overlay, .canvas-note, #zoom-bar')) {
     return;
   }
   if (isEmptyStateVisible()) {
@@ -1938,6 +2209,13 @@ document.addEventListener('mouseout', (event) => {
   hideTooltip();
 });
 
+document.addEventListener('copy', () => {
+  const source = getCopySourceLabel();
+  window.setTimeout(() => {
+    recordClipboardText(clipboard.readText(), source);
+  }, 0);
+}, true);
+
 if (toolHoverBtn) {
   toolHoverBtn.addEventListener('click', () => {
     consumeEmptyState();
@@ -1959,17 +2237,49 @@ if (toolWindowBtn) {
   });
 }
 
+if (toolTogglePreviewBtn) {
+  toolTogglePreviewBtn.addEventListener('click', () => {
+    setPreviewVisible(minimap?.classList.contains('is-hidden'));
+  });
+}
+
+if (toolToggleClipboardBtn) {
+  toolToggleClipboardBtn.addEventListener('click', () => {
+    setClipboardVisible(clipboardHub?.classList.contains('is-hidden'));
+  });
+}
+
 if (zoomOutBtn) {
   zoomOutBtn.addEventListener('click', () => {
     consumeEmptyState();
-    setScale(scale - 0.1);
+    setScale(scale / zoomStep);
   });
 }
 
 if (zoomInBtn) {
   zoomInBtn.addEventListener('click', () => {
     consumeEmptyState();
-    setScale(scale + 0.1);
+    setScale(scale * zoomStep);
+  });
+}
+
+if (clipboardHub) {
+  clipboardHub.addEventListener('mousedown', (event) => {
+    event.stopPropagation();
+  });
+  clipboardHub.addEventListener('click', (event) => {
+    event.stopPropagation();
+  });
+  clipboardHub.addEventListener('wheel', (event) => {
+    event.stopPropagation();
+  }, { passive: true });
+}
+
+if (clipboardClearBtn) {
+  clipboardClearBtn.addEventListener('click', () => {
+    clipboardEntries = [];
+    renderClipboardHub();
+    scheduleWorkspaceAutoSave();
   });
 }
 
@@ -1991,7 +2301,7 @@ viewport.addEventListener('mousedown', (event) => {
   if (!event.target.closest('.canvas-note')) {
     clearNoteSelection();
   }
-  if (event.target.closest('.terminal-close, #minimap, #tool-hub, #context-menu, #selection-overlay, #app-menu, #app-brand, #dialog-overlay, #zoom-bar')) {
+  if (event.target.closest('.terminal-close, #minimap, #tool-hub, #clipboard-hub, #context-menu, #selection-overlay, #app-menu, #app-brand, #dialog-overlay, #zoom-bar')) {
     return;
   }
   if (isEmptyStateVisible()) {
@@ -2030,7 +2340,7 @@ viewport.addEventListener('wheel', (event) => {
   }
   event.preventDefault();
   if (event.ctrlKey) {
-    const factor = Math.exp(-event.deltaY * 0.002);
+    const factor = Math.pow(zoomStep, -event.deltaY / 100);
     const origin = toViewportPoint(event.clientX, event.clientY);
     setScale(scale * factor, origin);
     return;
@@ -2109,7 +2419,7 @@ window.addEventListener('mousemove', (event) => {
       noteResizing = null;
       return;
     }
-    const nextWidth = Math.max(120, Math.min(640, noteResizing.width + (event.clientX - noteResizing.startClientX)));
+    const nextWidth = Math.max(120, Math.min(640, noteResizing.width + ((event.clientX - noteResizing.startClientX) / scale)));
     view.el.style.width = `${nextWidth}px`;
     syncNoteHeight(view.content);
     return;
@@ -2157,8 +2467,8 @@ window.addEventListener('mousemove', (event) => {
       resizing = null;
       return;
     }
-    const nextWidth = Math.max(360, resizing.width + (event.clientX - resizing.startX));
-    const nextHeight = Math.max(220, resizing.height + (event.clientY - resizing.startY));
+    const nextWidth = Math.max(360, resizing.width + ((event.clientX - resizing.startX) / scale));
+    const nextHeight = Math.max(220, resizing.height + ((event.clientY - resizing.startY) / scale));
     wrapper.style.width = `${nextWidth}px`;
     wrapper.style.height = `${nextHeight}px`;
     scheduleFit(view);
@@ -2254,6 +2564,9 @@ setCurrentWorkspace(currentWorkspace);
 updateZoomBar();
 setEmptyStateArmed(true);
 updateProtip();
+renderClipboardHub();
+setPreviewVisible(false);
+setClipboardVisible(true);
 if (zoomProtip) {
   zoomProtip.addEventListener('click', () => {
     advanceProtip();
@@ -2312,6 +2625,15 @@ window.addEventListener('mouseup', () => {
 window.addEventListener('resize', () => {
   applyTransform();
   terminalViews.forEach((view) => {
-    scheduleFit(view);
+    scheduleForceTerminalLayoutRefresh(view);
   });
+  if (terminalWindowResizeTimer) {
+    clearTimeout(terminalWindowResizeTimer);
+  }
+  terminalWindowResizeTimer = window.setTimeout(() => {
+    terminalWindowResizeTimer = 0;
+    terminalViews.forEach((view) => {
+      scheduleForceTerminalLayoutRefresh(view);
+    });
+  }, 120);
 });

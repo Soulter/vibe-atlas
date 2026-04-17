@@ -1,6 +1,6 @@
 const minScale = 0.35;
 const maxScale = 2.2;
-const zoomStep = 1.05;
+const zoomStep = 1.6;
 const baseGridSize = 40;
 const WORLD_WIDTH = 8000;
 const WORLD_HEIGHT = 6000;
@@ -13,7 +13,7 @@ const TOOL_MODES = {
 
 const terminalTheme = {
   background: '#1e1e1e',
-  foreground: '#cccccc',
+  foreground: '#ffffff',
   cursor: '#aeafad',
   cursorAccent: '#1e1e1e',
   selection: '#264f78',
@@ -31,8 +31,8 @@ const terminalTheme = {
   brightMagenta: '#d670d6',
   cyan: '#11a8cd',
   brightCyan: '#29b8db',
-  white: '#e5e5e5',
-  brightWhite: '#e5e5e5'
+  white: '#ffffff',
+  brightWhite: '#ffffff'
 };
 
 const protipMessages = [

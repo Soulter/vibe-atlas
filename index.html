@@ -4,9 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vibe Atlas</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Code:ital,wght@0,300..800;1,300..800&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./node_modules/xterm/css/xterm.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" />
     <link rel="stylesheet" href="./styles.css" />
@@ -82,7 +79,26 @@
           <button id="tool-window" type="button" title="窗口（框选创建）" aria-label="窗口">
             <span class="tool-icon mdi mdi-window-maximize" aria-hidden="true"></span>
           </button>
+          <span class="tool-hub-divider" aria-hidden="true"></span>
+          <button id="tool-toggle-preview" type="button" title="显示/隐藏预览" aria-label="显示/隐藏预览" aria-pressed="false">
+            <span class="tool-icon mdi mdi-map-outline" aria-hidden="true"></span>
+          </button>
+          <button id="tool-toggle-clipboard" class="active" type="button" title="显示/隐藏剪贴板" aria-label="显示/隐藏剪贴板" aria-pressed="true">
+            <span class="tool-icon mdi mdi-clipboard-text-outline" aria-hidden="true"></span>
+          </button>
         </div>
+        <aside id="clipboard-hub" aria-label="Clipboard history">
+          <div class="clipboard-hub-header">
+            <div>
+              <div class="clipboard-hub-title">Clipboard</div>
+              <div id="clipboard-count" class="clipboard-hub-count">0 items</div>
+            </div>
+            <button id="clipboard-clear" type="button" title="清空剪贴板记录">Clear</button>
+          </div>
+          <div id="clipboard-list" class="clipboard-list">
+            <div class="clipboard-empty">Copy text inside Vibe Atlas</div>
+          </div>
+        </aside>
         <div id="context-menu" class="hidden">
           <button id="context-add-terminal" title="在这里创建一个新的终端窗口">添加 Terminal</button>
         </div>

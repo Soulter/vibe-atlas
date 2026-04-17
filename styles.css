@@ -2,6 +2,11 @@
   box-sizing: border-box;
 }
 
+:root {
+  --app-font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono-font: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 html,
 body,
 #app {
@@ -9,7 +14,7 @@ body,
   height: 100%;
   margin: 0;
   overflow: hidden;
-  font-family: 'Courier New', 'SFMono-Regular', 'Menlo', Consolas, monospace;
+  font-family: var(--app-font);
   color: #ffffff;
 }
 
@@ -58,6 +63,15 @@ body,
   padding: 5px;
   pointer-events: auto;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+#minimap.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
 }
 
 #minimap-world {
@@ -141,8 +155,8 @@ body,
   justify-content: center;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  letter-spacing: 0;
+  font-family: var(--mono-font);
   white-space: nowrap;
 }
 
@@ -197,17 +211,17 @@ body,
   color: #f1f1f1;
   font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.01em;
-  font-family: "Outfit", "Helvetica Neue", sans-serif;
+  letter-spacing: 0;
+  font-family: var(--app-font);
 }
 
 .app-brand-version {
   color: #8f8f8f;
   font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   text-transform: uppercase;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
 }
 
 #empty-state {
@@ -229,9 +243,9 @@ body,
   color: rgba(255, 255, 255, 0.92);
   font-size: clamp(42px, 6vw, 72px);
   font-weight: 700;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
   line-height: 0.95;
-  font-family: "Outfit", "Helvetica Neue", sans-serif;
+  font-family: var(--app-font);
 }
 
 .empty-state-copy {
@@ -240,7 +254,7 @@ body,
   color: rgba(255, 255, 255, 0.46);
   font-size: clamp(14px, 1.6vw, 18px);
   line-height: 1.55;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--app-font);
 }
 
 .empty-state-meta {
@@ -248,7 +262,7 @@ body,
   color: rgba(255, 255, 255, 0.36);
   font-size: 12px;
   line-height: 1.5;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
 }
 
 .empty-state-meta a {
@@ -279,7 +293,7 @@ body,
   color: rgba(255, 255, 255, 0.58);
   font-size: 12px;
   line-height: 1;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--app-font);
 }
 
 .empty-state-shortcuts kbd {
@@ -293,7 +307,7 @@ body,
   color: rgba(255, 255, 255, 0.88);
   font-size: 11px;
   font-weight: 600;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
 }
 
 .empty-state-actions {
@@ -316,8 +330,8 @@ body,
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.01em;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+  font-family: var(--app-font);
   transition: background-color 120ms ease, transform 120ms ease;
 }
 
@@ -355,7 +369,7 @@ body,
   cursor: pointer;
   font-size: 18px;
   line-height: 1;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
 }
 
 #zoom-out:hover,
@@ -374,7 +388,7 @@ body,
   background: #1e1e1e;
   color: #d0d0d0;
   font-size: 12px;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
 }
 
 #zoom-protip {
@@ -393,7 +407,7 @@ body,
   color: rgba(255, 255, 255, 0.44);
   font-size: 11px;
   line-height: 1.4;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -453,6 +467,14 @@ body,
   text-decoration: none;
 }
 
+.tool-hub-divider {
+  width: 1px;
+  height: 22px;
+  align-self: center;
+  margin: 0 3px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
 #tool-hub button,
 #tool-hub button:focus-visible {
   outline: none;
@@ -471,6 +493,139 @@ body,
 #tool-hub button:active {
   transform: translateY(1px);
   background: #3a3a3a;
+}
+
+#clipboard-hub {
+  position: absolute;
+  right: 14px;
+  bottom: 168px;
+  z-index: 19;
+  width: 300px;
+  height: 320px;
+  max-height: calc(100vh - 190px);
+  display: flex;
+  flex-direction: column;
+  min-height: 180px;
+  border-radius: 8px;
+  background: rgba(20, 20, 20, 0.94);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  pointer-events: auto;
+  overflow: hidden;
+  opacity: 1;
+  transform: translateY(0);
+  transition: bottom 180ms ease, opacity 160ms ease, transform 160ms ease;
+}
+
+#clipboard-hub.preview-hidden {
+  bottom: 14px;
+}
+
+#clipboard-hub.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+}
+
+.clipboard-hub-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.clipboard-hub-title {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.2;
+  font-family: var(--app-font);
+}
+
+.clipboard-hub-count {
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 11px;
+  line-height: 1.2;
+  font-family: var(--mono-font);
+}
+
+#clipboard-clear {
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 10px;
+  background: #262626;
+  color: #d8d8d8;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: var(--app-font);
+}
+
+#clipboard-clear:hover {
+  background: #323232;
+  color: #ffffff;
+}
+
+.clipboard-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+}
+
+.clipboard-empty {
+  padding: 10px;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 12px;
+  line-height: 1.45;
+  font-family: var(--app-font);
+}
+
+.clipboard-item {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px;
+  margin: 0 0 6px;
+  background: #262626;
+  color: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--app-font);
+}
+
+.clipboard-item:hover {
+  background: #303030;
+}
+
+.clipboard-item.copied {
+  background: #2f3f36;
+}
+
+.clipboard-item-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 5px;
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 10px;
+  line-height: 1.2;
+  font-family: var(--mono-font);
+}
+
+.clipboard-item-preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 #app-menu-panel {
@@ -500,9 +655,9 @@ body,
   color: #7f7f7f;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   text-transform: uppercase;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--app-font);
 }
 
 .workspace-current-name {
@@ -510,7 +665,7 @@ body,
   color: #e7e7e7;
   font-size: 14px;
   font-weight: 600;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
   word-break: break-word;
 }
 
@@ -536,7 +691,7 @@ body,
   padding: 0 10px;
   text-align: left;
   font-size: 12px;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
   cursor: pointer;
   transition: background-color 120ms ease, color 120ms ease;
 }
@@ -556,7 +711,7 @@ body,
   padding: 8px 10px;
   color: #848484;
   font-size: 12px;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
 }
 
 #dialog-overlay {
@@ -583,7 +738,7 @@ body,
   color: #f3f3f3;
   font-size: 14px;
   font-weight: 600;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
 }
 
 #dialog-message {
@@ -591,7 +746,7 @@ body,
   color: #9d9d9d;
   font-size: 12px;
   line-height: 1.4;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
 }
 
 #dialog-input {
@@ -606,7 +761,7 @@ body,
   outline: none;
   box-sizing: border-box;
   font-size: 13px;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
 }
 
 #dialog-input:focus {
@@ -630,7 +785,7 @@ body,
   color: #d8d8d8;
   cursor: pointer;
   font-size: 12px;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
 }
 
 #dialog-actions button:hover {
@@ -650,7 +805,7 @@ body,
   line-height: 1.35;
   pointer-events: none;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--app-font);
   white-space: nowrap;
 }
 
@@ -693,7 +848,7 @@ body,
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
 }
 
 .terminal-header {
@@ -717,11 +872,11 @@ body,
 
 .terminal-title {
   font-size: 12px;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
   font-weight: 500;
   opacity: 0.92;
   color: #b7b7b7;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   min-width: 0;
   cursor: text;
   white-space: nowrap;
@@ -751,8 +906,8 @@ body,
   font-size: 10px;
   line-height: 1;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  letter-spacing: 0;
+  font-family: var(--mono-font);
   white-space: nowrap;
 }
 
@@ -787,7 +942,7 @@ body,
   background: #242424;
   color: #9f9f9f;
   cursor: pointer;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
   font-weight: 600;
 }
 
@@ -909,7 +1064,7 @@ body.shift-pan-mode .terminal-body .xterm * {
   cursor: pointer;
   font-size: 11px;
   line-height: 1;
-  font-family: "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-family: var(--mono-font);
 }
 
 .canvas-note-tool:hover {
@@ -929,7 +1084,7 @@ body.shift-pan-mode .terminal-body .xterm * {
 .canvas-note-content {
   min-height: 28px;
   padding: 4px 6px;
-  color: rgba(255, 248, 196, 0.96);
+  color: #ffffff;
   background: transparent;
   outline: 1px dashed transparent;
   outline-offset: 2px;
@@ -937,16 +1092,16 @@ body.shift-pan-mode .terminal-body .xterm * {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.35;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  font-family: "Outfit", "Google Sans Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-weight: 450;
+  letter-spacing: 0;
+  font-family: var(--app-font);
   text-shadow: 0 1px 12px rgba(0, 0, 0, 0.26);
-  caret-color: #fff4a8;
+  caret-color: #ffffff;
 }
 
 .canvas-note-content:empty::before {
   content: "Type here";
-  color: rgba(255, 248, 196, 0.36);
+  color: rgba(255, 255, 255, 0.42);
 }
 
 .canvas-note-width-handle {

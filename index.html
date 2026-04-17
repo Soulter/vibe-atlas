@@ -80,6 +80,9 @@
             <span class="tool-icon mdi mdi-window-maximize" aria-hidden="true"></span>
           </button>
           <span class="tool-hub-divider" aria-hidden="true"></span>
+          <button id="ssh-panel-button" type="button" title="SSH servers" aria-label="SSH servers" aria-pressed="false">
+            <span class="tool-icon mdi mdi-server-network" aria-hidden="true"></span>
+          </button>
           <button id="tool-toggle-preview" type="button" title="显示/隐藏预览" aria-label="显示/隐藏预览" aria-pressed="false">
             <span class="tool-icon mdi mdi-map-outline" aria-hidden="true"></span>
           </button>
@@ -102,6 +105,42 @@
             <div class="clipboard-empty">Copy text inside Vibe Atlas</div>
           </div>
         </aside>
+        <aside id="ssh-panel" class="is-hidden" aria-label="SSH servers">
+          <div class="ssh-panel-header">
+            <div>
+              <div class="ssh-panel-title">SSH Servers</div>
+              <div id="ssh-panel-count" class="ssh-panel-count">0 hosts</div>
+            </div>
+            <button id="ssh-panel-hide" type="button" title="隐藏 SSH 面板">Hide</button>
+          </div>
+          <div class="ssh-direct">
+            <input id="ssh-direct-command" type="text" placeholder="ssh user@host -p 22" autocomplete="off" spellcheck="false" />
+            <button id="ssh-direct-connect" type="button" title="运行 SSH 指令">Connect</button>
+          </div>
+          <button id="ssh-new-host" type="button" title="新增 SSH 主机">New Host</button>
+          <form id="ssh-host-form" class="is-hidden">
+            <input id="ssh-host-name" type="text" placeholder="Name" autocomplete="off" spellcheck="false" />
+            <input id="ssh-host-address" type="text" placeholder="IP / host" autocomplete="off" spellcheck="false" />
+            <div class="ssh-form-row">
+              <input id="ssh-host-port" type="number" min="1" max="65535" value="22" placeholder="Port" autocomplete="off" />
+              <input id="ssh-host-username" type="text" placeholder="Username" autocomplete="off" spellcheck="false" />
+            </div>
+            <input id="ssh-host-password" type="password" placeholder="Password" autocomplete="new-password" />
+            <label class="ssh-check-row">
+              <input id="ssh-host-save-password" type="checkbox" />
+              <span>Save password locally</span>
+            </label>
+            <input id="ssh-host-command" type="text" placeholder="Optional: ssh ..." autocomplete="off" spellcheck="false" />
+            <div class="ssh-form-actions">
+              <button id="ssh-host-save" type="submit">Save</button>
+              <button id="ssh-host-connect" type="button">Connect</button>
+              <button id="ssh-host-cancel" type="button">Cancel</button>
+            </div>
+          </form>
+          <div id="ssh-host-list" class="ssh-host-list">
+            <div class="ssh-empty">No SSH hosts yet</div>
+          </div>
+        </aside>
         <div id="context-menu" class="hidden">
           <button id="context-add-terminal" title="在这里创建一个新的终端窗口">添加 Terminal</button>
         </div>
@@ -110,6 +149,10 @@
             <div id="dialog-title">Workspace Name</div>
             <div id="dialog-message">Name this workspace.</div>
             <input id="dialog-input" type="text" autocomplete="off" spellcheck="false" />
+            <label id="dialog-save-password-row" class="dialog-check-row hidden">
+              <input id="dialog-save-password" type="checkbox" />
+              <span>Save password for this host</span>
+            </label>
             <div id="dialog-actions">
               <button id="dialog-cancel" type="button" title="取消当前操作">Cancel</button>
               <button id="dialog-confirm" type="button" title="确认并继续">Confirm</button>

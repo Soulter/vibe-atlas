@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, safeStorage } = require('electron');
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
@@ -12,6 +12,7 @@ let terminalStatusTimer = null;
 let terminalSeq = 1;
 const WORKSPACES_DIRNAME = 'workspaces';
 const APP_STATE_FILENAME = 'app-state.json';
+const SSH_HOSTS_FILENAME = 'ssh-hosts.json';
 let allowWindowClose = false;
 
 function getWorkspacesDir() {
@@ -24,6 +25,10 @@ function ensureWorkspacesDir() {
 
 function getAppStatePath() {
   return path.join(app.getPath('userData'), APP_STATE_FILENAME);
+}
+
+function getSshHostsPath() {
+  return path.join(app.getPath('userData'), SSH_HOSTS_FILENAME);
 }
 
 function readAppState() {
@@ -56,6 +61,155 @@ function getLastOpenedWorkspaceId() {
 function setLastOpenedWorkspaceId(id) {
   writeAppState({
     lastOpenedWorkspaceId: id ? String(id) : null
+  });
+}
+
+function readSshHostsStore() {
+  try {
+    const fullPath = getSshHostsPath();
+    if (!fs.existsSync(fullPath)) {
+      return { hosts: [] };
+    }
+    const data = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+    return {
+      hosts: Array.isArray(data?.hosts) ? data.hosts : []
+    };
+  } catch (_error) {
+    return { hosts: [] };
+  }
+}
+
+function writeSshHostsStore(store = {}) {
+  const payload = {
+    hosts: Array.isArray(store.hosts) ? store.hosts : []
+  };
+  fs.writeFileSync(getSshHostsPath(), JSON.stringify(payload, null, 2), 'utf8');
+  return payload;
+}
+
+function createSshHostId() {
+  return `ssh-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function sanitizeSshLabel(value, fallback = '') {
+  return String(value || '')
+    .trim()
+    .replace(/[\x00-\x1f]/g, '')
+    .slice(0, 80) || fallback;
+}
+
+function sanitizeSshHostName(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_.:-]/g, '')
+    .slice(0, 255);
+}
+
+function sanitizeSshUsername(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_.-]/g, '')
+    .slice(0, 80);
+}
+
+function sanitizeSshCommand(value) {
+  const command = String(value || '').trim().replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').slice(0, 1000);
+  if (command && !/^ssh(?:\s|$)/.test(command)) {
+    throw new Error('SSH command must start with ssh');
+  }
+  return command;
+}
+
+function encryptSshPassword(password) {
+  const value = String(password || '');
+  if (!value) {
+    return '';
+  }
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Secure password storage is not available on this system');
+  }
+  return safeStorage.encryptString(value).toString('base64');
+}
+
+function decryptSshPassword(encrypted) {
+  if (!encrypted) {
+    return '';
+  }
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Secure password storage is not available on this system');
+  }
+  return safeStorage.decryptString(Buffer.from(String(encrypted), 'base64'));
+}
+
+function publicSshHost(host) {
+  let command = '';
+  try {
+    command = sanitizeSshCommand(host.command);
+  } catch (_error) {
+    command = '';
+  }
+
+  return {
+    id: String(host.id || ''),
+    name: sanitizeSshLabel(host.name, 'SSH Host'),
+    host: sanitizeSshHostName(host.host),
+    port: Number.isFinite(Number(host.port)) ? Math.max(1, Math.min(65535, Number(host.port))) : 22,
+    username: sanitizeSshUsername(host.username),
+    command,
+    hasPassword: Boolean(host.encryptedPassword),
+    updatedAt: host.updatedAt || null
+  };
+}
+
+function saveSshHost(input = {}) {
+  const store = readSshHostsStore();
+  const now = new Date().toISOString();
+  const id = input.id ? String(input.id) : createSshHostId();
+  const existing = store.hosts.find((item) => String(item.id) === id) || null;
+  const command = sanitizeSshCommand(input.command);
+  const host = sanitizeSshHostName(input.host);
+  const username = sanitizeSshUsername(input.username);
+  const port = Number.isFinite(Number(input.port)) ? Math.max(1, Math.min(65535, Math.floor(Number(input.port)))) : 22;
+  if (!command && !host) {
+    throw new Error('Host or SSH command is required');
+  }
+
+  let encryptedPassword = existing?.encryptedPassword || '';
+  if (Object.prototype.hasOwnProperty.call(input, 'password')) {
+    const password = String(input.password || '');
+    if (input.savePassword && password) {
+      encryptedPassword = encryptSshPassword(password);
+    } else if (!input.savePassword) {
+      encryptedPassword = '';
+    }
+  }
+
+  const name = sanitizeSshLabel(
+    input.name,
+    username && host ? `${username}@${host}` : host || command || 'SSH Host'
+  );
+  const nextHost = {
+    id,
+    name,
+    host,
+    port,
+    username,
+    command,
+    encryptedPassword,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
+  };
+
+  const nextHosts = store.hosts.filter((item) => String(item.id) !== id);
+  nextHosts.unshift(nextHost);
+  writeSshHostsStore({ hosts: nextHosts.slice(0, 200) });
+  return publicSshHost(nextHost);
+}
+
+function deleteSshHost(id) {
+  const store = readSshHostsStore();
+  writeSshHostsStore({
+    hosts: store.hosts.filter((item) => String(item.id) !== String(id))
   });
 }
 
@@ -551,6 +705,48 @@ ipcMain.handle('workspace:last-opened', async () => {
     return { ok: true, id: getLastOpenedWorkspaceId() };
   } catch (error) {
     return { ok: false, error: error?.message || String(error), id: null };
+  }
+});
+
+ipcMain.handle('ssh:list', async () => {
+  try {
+    const store = readSshHostsStore();
+    return {
+      ok: true,
+      hosts: store.hosts.map(publicSshHost).filter((host) => host.id)
+    };
+  } catch (error) {
+    return { ok: false, error: error?.message || String(error), hosts: [] };
+  }
+});
+
+ipcMain.handle('ssh:save', async (_event, payload = {}) => {
+  try {
+    return { ok: true, host: saveSshHost(payload.host || payload) };
+  } catch (error) {
+    return { ok: false, error: error?.message || String(error) };
+  }
+});
+
+ipcMain.handle('ssh:delete', async (_event, id) => {
+  try {
+    deleteSshHost(id);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error?.message || String(error) };
+  }
+});
+
+ipcMain.handle('ssh:get-password', async (_event, id) => {
+  try {
+    const store = readSshHostsStore();
+    const host = store.hosts.find((item) => String(item.id) === String(id));
+    if (!host?.encryptedPassword) {
+      return { ok: true, password: '' };
+    }
+    return { ok: true, password: decryptSshPassword(host.encryptedPassword) };
+  } catch (error) {
+    return { ok: false, error: error?.message || String(error), password: '' };
   }
 });
 

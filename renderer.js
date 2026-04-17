@@ -36,6 +36,24 @@ const clipboardCount = document.getElementById('clipboard-count');
 const clipboardList = document.getElementById('clipboard-list');
 const clipboardClearBtn = document.getElementById('clipboard-clear');
 const clipboardHideBtn = document.getElementById('clipboard-hide');
+const sshPanelButton = document.getElementById('ssh-panel-button');
+const sshPanel = document.getElementById('ssh-panel');
+const sshPanelHideBtn = document.getElementById('ssh-panel-hide');
+const sshPanelCount = document.getElementById('ssh-panel-count');
+const sshDirectCommand = document.getElementById('ssh-direct-command');
+const sshDirectConnectBtn = document.getElementById('ssh-direct-connect');
+const sshNewHostBtn = document.getElementById('ssh-new-host');
+const sshHostForm = document.getElementById('ssh-host-form');
+const sshHostNameInput = document.getElementById('ssh-host-name');
+const sshHostAddressInput = document.getElementById('ssh-host-address');
+const sshHostPortInput = document.getElementById('ssh-host-port');
+const sshHostUsernameInput = document.getElementById('ssh-host-username');
+const sshHostPasswordInput = document.getElementById('ssh-host-password');
+const sshHostSavePasswordInput = document.getElementById('ssh-host-save-password');
+const sshHostCommandInput = document.getElementById('ssh-host-command');
+const sshHostConnectBtn = document.getElementById('ssh-host-connect');
+const sshHostCancelBtn = document.getElementById('ssh-host-cancel');
+const sshHostList = document.getElementById('ssh-host-list');
 const emptyState = document.getElementById('empty-state');
 const emptyStateNewTerminalBtn = document.getElementById('empty-state-new-terminal');
 const emptyStateNewNoteBtn = document.getElementById('empty-state-new-note');
@@ -51,6 +69,8 @@ const dialogOverlay = document.getElementById('dialog-overlay');
 const dialogTitle = document.getElementById('dialog-title');
 const dialogMessage = document.getElementById('dialog-message');
 const dialogInput = document.getElementById('dialog-input');
+const dialogSavePasswordRow = document.getElementById('dialog-save-password-row');
+const dialogSavePassword = document.getElementById('dialog-save-password');
 const dialogCancel = document.getElementById('dialog-cancel');
 const dialogConfirm = document.getElementById('dialog-confirm');
 const appTooltip = document.getElementById('app-tooltip');
@@ -104,6 +124,8 @@ let terminalWindowResizeTimer = 0;
 let clipboardClearConfirmTimer = 0;
 let clipboardSeq = 1;
 let clipboardEntries = [];
+let sshHosts = [];
+let editingSshHostId = null;
 
 function showTooltip(text, clientX, clientY) {
   if (!appTooltip || !text) {
@@ -263,8 +285,25 @@ function closeInputDialog(result = null) {
   dialogOverlay.classList.add('hidden');
   if (dialogInput) {
     dialogInput.value = '';
+    dialogInput.type = 'text';
+  }
+  if (dialogSavePasswordRow) {
+    dialogSavePasswordRow.classList.add('hidden');
+  }
+  if (dialogSavePassword) {
+    dialogSavePassword.checked = false;
   }
   resolver(result);
+}
+
+function getDialogInputResult() {
+  if (dialogSavePasswordRow && !dialogSavePasswordRow.classList.contains('hidden')) {
+    return {
+      password: dialogInput?.value ?? '',
+      savePassword: Boolean(dialogSavePassword?.checked)
+    };
+  }
+  return dialogInput?.value ?? '';
 }
 
 function requestTextInput({
@@ -283,7 +322,14 @@ function requestTextInput({
 
   dialogTitle.textContent = title;
   dialogMessage.textContent = message;
+  dialogInput.type = 'text';
   dialogInput.value = value;
+  if (dialogSavePasswordRow) {
+    dialogSavePasswordRow.classList.add('hidden');
+  }
+  if (dialogSavePassword) {
+    dialogSavePassword.checked = false;
+  }
   dialogConfirm.textContent = confirmLabel;
   dialogOverlay.classList.remove('hidden');
 
@@ -292,6 +338,40 @@ function requestTextInput({
     requestAnimationFrame(() => {
       dialogInput.focus();
       dialogInput.select();
+    });
+  });
+}
+
+function requestPasswordInput({
+  title = 'SSH Password',
+  message = 'Enter password for this SSH session.',
+  confirmLabel = 'Connect'
+} = {}) {
+  if (!dialogOverlay || !dialogTitle || !dialogMessage || !dialogInput || !dialogConfirm) {
+    return Promise.resolve(null);
+  }
+
+  if (dialogResolver) {
+    closeInputDialog(null);
+  }
+
+  dialogTitle.textContent = title;
+  dialogMessage.textContent = message;
+  dialogInput.type = 'password';
+  dialogInput.value = '';
+  if (dialogSavePasswordRow) {
+    dialogSavePasswordRow.classList.remove('hidden');
+  }
+  if (dialogSavePassword) {
+    dialogSavePassword.checked = false;
+  }
+  dialogConfirm.textContent = confirmLabel;
+  dialogOverlay.classList.remove('hidden');
+
+  return new Promise((resolve) => {
+    dialogResolver = resolve;
+    requestAnimationFrame(() => {
+      dialogInput.focus();
     });
   });
 }
@@ -441,6 +521,858 @@ function restoreClipboardEntries(entries = []) {
     })).filter((entry) => entry.text.trim())
     : [];
   renderClipboardHub();
+}
+
+function shellQuote(value) {
+  const text = String(value || '');
+  if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(text)) {
+    return text;
+  }
+  return `'${text.replace(/'/g, `'\\''`)}'`;
+}
+
+function tokenizeSshCommand(value) {
+  const tokens = [];
+  const pattern = /"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|(\S+)/g;
+  let match = null;
+  while ((match = pattern.exec(String(value || ''))) !== null) {
+    const token = match[1] ?? match[2] ?? match[3] ?? '';
+    tokens.push(token.replace(/\\(["'\\\s])/g, '$1'));
+  }
+  return tokens;
+}
+
+function parseSshCommand(value) {
+  const tokens = tokenizeSshCommand(value);
+  if (!tokens.length || tokens[0] !== 'ssh') {
+    return null;
+  }
+
+  let username = '';
+  let host = '';
+  let port = 22;
+  let target = '';
+  const optionsWithArgs = new Set([
+    '-B', '-b', '-c', '-D', '-E', '-e', '-F', '-I', '-i', '-J', '-L', '-l',
+    '-m', '-O', '-o', '-p', '-Q', '-R', '-S', '-W', '-w'
+  ]);
+
+  for (let i = 1; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    if (token === '-p') {
+      const next = tokens[i + 1];
+      const nextPort = Number(next);
+      if (Number.isFinite(nextPort)) {
+        port = Math.max(1, Math.min(65535, Math.floor(nextPort)));
+      }
+      i += 1;
+      continue;
+    }
+    if (token.startsWith('-p') && token.length > 2) {
+      const nextPort = Number(token.slice(2));
+      if (Number.isFinite(nextPort)) {
+        port = Math.max(1, Math.min(65535, Math.floor(nextPort)));
+      }
+      continue;
+    }
+    if (token === '-l') {
+      username = String(tokens[i + 1] || '');
+      i += 1;
+      continue;
+    }
+    if (token.startsWith('-l') && token.length > 2) {
+      username = token.slice(2);
+      continue;
+    }
+    if (optionsWithArgs.has(token)) {
+      i += 1;
+      continue;
+    }
+    if (token.startsWith('-')) {
+      continue;
+    }
+    if (!target) {
+      target = token;
+    }
+  }
+
+  if (target.includes('@')) {
+    const parts = target.split('@');
+    username = username || parts.slice(0, -1).join('@');
+    host = parts.at(-1) || '';
+  } else {
+    host = target;
+  }
+
+  return {
+    command: tokens.map(shellQuote).join(' '),
+    username,
+    host,
+    port
+  };
+}
+
+function normalizeSshCommand(value) {
+  const parsed = parseSshCommand(value);
+  if (!parsed || !parsed.command) {
+    throw new Error('SSH command must start with ssh');
+  }
+  return parsed.command;
+}
+
+function buildSshCommand(host) {
+  if (!host) {
+    return '';
+  }
+  if (host.command) {
+    return normalizeSshCommand(host.command);
+  }
+  const address = String(host.host || '').trim();
+  if (!address) {
+    return '';
+  }
+  const port = Number.isFinite(Number(host.port)) ? Math.max(1, Math.min(65535, Math.floor(Number(host.port)))) : 22;
+  const username = String(host.username || '').trim();
+  const target = username ? `${username}@${address}` : address;
+  return ['ssh', '-p', String(port), shellQuote(target)].join(' ');
+}
+
+function getSshHostDetail(host) {
+  if (!host) {
+    return '';
+  }
+  if (host.command) {
+    return host.command;
+  }
+  const address = String(host.host || '').trim();
+  const username = String(host.username || '').trim();
+  const port = Number.isFinite(Number(host.port)) ? Number(host.port) : 22;
+  return `${username ? `${username}@` : ''}${address}${address ? `:${port}` : ''}`;
+}
+
+function renderSshHosts() {
+  if (!sshHostList || !sshPanelCount) {
+    return;
+  }
+
+  sshPanelCount.textContent = `${sshHosts.length} host${sshHosts.length === 1 ? '' : 's'}`;
+  sshHostList.innerHTML = '';
+  if (!sshHosts.length) {
+    const empty = document.createElement('div');
+    empty.className = 'ssh-empty';
+    empty.textContent = 'No SSH hosts yet';
+    sshHostList.appendChild(empty);
+    return;
+  }
+
+  sshHosts.forEach((host) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'ssh-host-item';
+    item.title = 'Connect';
+    item.addEventListener('click', () => {
+      connectSshHost(host);
+    });
+
+    const main = document.createElement('div');
+    main.className = 'ssh-host-main';
+
+    const name = document.createElement('div');
+    name.className = 'ssh-host-name';
+    name.textContent = host.name || 'SSH Host';
+
+    const detail = document.createElement('div');
+    detail.className = 'ssh-host-detail';
+    detail.textContent = getSshHostDetail(host);
+
+    const actions = document.createElement('div');
+    actions.className = 'ssh-host-actions';
+
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.title = 'Edit';
+    edit.setAttribute('aria-label', 'Edit SSH host');
+    edit.innerHTML = '<span class="tool-icon mdi mdi-pencil-outline" aria-hidden="true"></span>';
+    edit.addEventListener('click', (event) => {
+      event.stopPropagation();
+      showSshHostForm(host);
+    });
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.title = 'Delete';
+    remove.setAttribute('aria-label', 'Delete SSH host');
+    remove.innerHTML = '<span class="tool-icon mdi mdi-trash-can-outline" aria-hidden="true"></span>';
+    remove.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      const confirmed = window.confirm(`Delete SSH host "${host.name || 'SSH Host'}"?`);
+      if (!confirmed) {
+        return;
+      }
+      const result = await ipcRenderer.invoke('ssh:delete', host.id);
+      if (!result?.ok) {
+        window.alert(result?.error || 'Failed to delete SSH host');
+      }
+      await refreshSshHosts();
+    });
+
+    actions.appendChild(edit);
+    actions.appendChild(remove);
+    main.appendChild(name);
+    main.appendChild(detail);
+    item.appendChild(main);
+    item.appendChild(actions);
+    sshHostList.appendChild(item);
+  });
+}
+
+async function refreshSshHosts() {
+  const result = await ipcRenderer.invoke('ssh:list');
+  if (!result?.ok) {
+    window.alert(result?.error || 'Failed to load SSH hosts');
+    sshHosts = [];
+  } else {
+    sshHosts = Array.isArray(result.hosts) ? result.hosts : [];
+  }
+  renderSshHosts();
+}
+
+function setSshPanelVisible(visible) {
+  if (!sshPanel) {
+    return;
+  }
+  const shouldShow = Boolean(visible);
+  sshPanel.classList.toggle('is-hidden', !shouldShow);
+  sshPanelButton?.classList.toggle('active', shouldShow);
+  if (sshPanelButton) {
+    sshPanelButton.setAttribute('aria-pressed', shouldShow ? 'true' : 'false');
+  }
+}
+
+function showSshHostForm(host = null) {
+  if (!sshHostForm) {
+    return;
+  }
+  editingSshHostId = host?.id ? String(host.id) : null;
+  sshHostNameInput.value = host?.name || '';
+  sshHostAddressInput.value = host?.host || '';
+  sshHostPortInput.value = String(host?.port || 22);
+  sshHostUsernameInput.value = host?.username || '';
+  sshHostPasswordInput.value = '';
+  sshHostSavePasswordInput.checked = Boolean(host?.hasPassword);
+  sshHostCommandInput.value = host?.command || '';
+  sshHostForm.classList.remove('is-hidden');
+  requestAnimationFrame(() => {
+    (sshHostNameInput || sshHostAddressInput)?.focus();
+  });
+}
+
+function hideSshHostForm() {
+  editingSshHostId = null;
+  if (sshHostNameInput) sshHostNameInput.value = '';
+  if (sshHostAddressInput) sshHostAddressInput.value = '';
+  if (sshHostPortInput) sshHostPortInput.value = '22';
+  if (sshHostUsernameInput) sshHostUsernameInput.value = '';
+  if (sshHostPasswordInput) sshHostPasswordInput.value = '';
+  if (sshHostSavePasswordInput) sshHostSavePasswordInput.checked = false;
+  if (sshHostCommandInput) sshHostCommandInput.value = '';
+  sshHostForm?.classList.add('is-hidden');
+}
+
+function collectSshHostForm() {
+  const commandValue = String(sshHostCommandInput?.value || '').trim();
+  let parsed = null;
+  if (commandValue) {
+    parsed = parseSshCommand(commandValue);
+    if (!parsed) {
+      throw new Error('SSH command must start with ssh');
+    }
+  }
+  return {
+    id: editingSshHostId,
+    name: String(sshHostNameInput?.value || '').trim(),
+    host: String(sshHostAddressInput?.value || parsed?.host || '').trim(),
+    port: Number(sshHostPortInput?.value || parsed?.port || 22),
+    username: String(sshHostUsernameInput?.value || parsed?.username || '').trim(),
+    command: commandValue ? parsed.command : '',
+    password: sshHostPasswordInput?.value || '',
+    savePassword: Boolean(sshHostSavePasswordInput?.checked)
+  };
+}
+
+async function saveSshHostFromForm({ connectAfter = false } = {}) {
+  let payload = null;
+  try {
+    payload = collectSshHostForm();
+  } catch (error) {
+    window.alert(error?.message || String(error));
+    return null;
+  }
+
+  const plainPassword = payload.password;
+  const result = await ipcRenderer.invoke('ssh:save', { host: payload });
+  if (!result?.ok) {
+    window.alert(result?.error || 'Failed to save SSH host');
+    return null;
+  }
+
+  hideSshHostForm();
+  await refreshSshHosts();
+  const savedHost = result.host;
+  if (connectAfter && savedHost) {
+    connectSshHost(savedHost, {
+      pendingPassword: plainPassword && !payload.savePassword ? plainPassword : ''
+    });
+  }
+  return savedHost;
+}
+
+async function connectSshHost(host, options = {}) {
+  try {
+    const command = buildSshCommand(host);
+    if (!command) {
+      window.alert('Host or SSH command is required');
+      return;
+    }
+    await connectSshCommand(command, {
+      hostId: host.id || null,
+      host,
+      pendingPassword: options.pendingPassword || '',
+      allowSavePrompt: true
+    });
+  } catch (error) {
+    window.alert(error?.message || String(error));
+  }
+}
+
+async function connectSshCommand(commandValue, context = {}) {
+  let command = '';
+  try {
+    command = normalizeSshCommand(commandValue);
+  } catch (error) {
+    window.alert(error?.message || String(error));
+    return null;
+  }
+
+  consumeEmptyState();
+  const center = getViewportCenterWorldPoint();
+  const parsed = parseSshCommand(command);
+  const titleTarget = context.host?.name || parsed?.host || 'SSH';
+  const view = await addTerminalAtPosition(center.x, center.y, 720, 460, {
+    title: `SSH: ${titleTarget}`,
+    sshPending: true
+  });
+  if (!view) {
+    return null;
+  }
+
+  view.sshSession = {
+    hostId: context.hostId || null,
+    host: context.host || null,
+    command,
+    commandSent: false,
+    completed: false,
+    hiddenOutput: '',
+    promptActive: false,
+    passwordResolver: null,
+    hostKeyResolver: null,
+    savedPasswordTried: false,
+    pendingPassword: context.pendingPassword || '',
+    allowSavePrompt: context.allowSavePrompt !== false,
+    passwordSubmitted: false,
+    remoteOutputStarted: false,
+    revealTimer: 0,
+    forceRevealTimer: 0
+  };
+  view.sshPromptBuffer = '';
+  setSshOverlayMode(view, 'loading', {
+    title: 'Connecting',
+    message: 'Opening SSH session.'
+  });
+
+  window.setTimeout(() => {
+    if (!view.closed) {
+      view.sshSession.commandSent = true;
+      ipcRenderer.send('terminal:input', { id: view.id, data: `${command}\r` });
+    }
+  }, 80);
+  return view;
+}
+
+function stripAnsi(value) {
+  return String(value || '').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
+}
+
+function isSshPasswordPrompt(value) {
+  const text = stripAnsi(value).replace(/\r/g, '');
+  return /(?:password|passphrase)(?:\s+for\s+[^:\n]+)?\s*:\s*$/i.test(text);
+}
+
+function isSshHostKeyPrompt(value) {
+  const text = stripAnsi(value).replace(/\r/g, '');
+  return /are you sure you want to continue connecting.*\((?:yes\/no|yes\/no\/\[fingerprint\])\)\?\s*$/i.test(text);
+}
+
+function looksLikeShellPrompt(value) {
+  const text = stripAnsi(value).replace(/\r/g, '');
+  const lines = text.split('\n').map((line) => line.trimEnd()).filter(Boolean);
+  const lastLine = lines.at(-1) || '';
+  return /(?:[$#%>]|\])\s*$/.test(lastLine);
+}
+
+function ensureSshConnectionOverlay(view) {
+  if (!view?.body) {
+    return null;
+  }
+  if (view.sshOverlay?.root) {
+    return view.sshOverlay;
+  }
+
+  const root = document.createElement('div');
+  root.className = 'ssh-connection-overlay';
+
+  const content = document.createElement('div');
+  content.className = 'ssh-connection-content';
+
+  const spinner = document.createElement('div');
+  spinner.className = 'ssh-connection-spinner';
+
+  const title = document.createElement('div');
+  title.className = 'ssh-connection-title';
+
+  const message = document.createElement('div');
+  message.className = 'ssh-connection-message';
+
+  const passwordForm = document.createElement('form');
+  passwordForm.className = 'ssh-connection-password is-hidden';
+
+  const passwordInput = document.createElement('input');
+  passwordInput.type = 'password';
+  passwordInput.placeholder = 'Password';
+  passwordInput.autocomplete = 'new-password';
+
+  const saveRow = document.createElement('label');
+  saveRow.className = 'ssh-connection-save';
+
+  const savePassword = document.createElement('input');
+  savePassword.type = 'checkbox';
+
+  const saveText = document.createElement('span');
+  saveText.textContent = 'Save password locally';
+
+  const passwordActions = document.createElement('div');
+  passwordActions.className = 'ssh-connection-actions';
+
+  const passwordCancel = document.createElement('button');
+  passwordCancel.type = 'button';
+  passwordCancel.textContent = 'Cancel';
+
+  const passwordSubmit = document.createElement('button');
+  passwordSubmit.type = 'submit';
+  passwordSubmit.textContent = 'Connect';
+
+  saveRow.appendChild(savePassword);
+  saveRow.appendChild(saveText);
+  passwordActions.appendChild(passwordCancel);
+  passwordActions.appendChild(passwordSubmit);
+  passwordForm.appendChild(passwordInput);
+  passwordForm.appendChild(saveRow);
+  passwordForm.appendChild(passwordActions);
+
+  const confirmActions = document.createElement('div');
+  confirmActions.className = 'ssh-connection-actions is-hidden';
+
+  const confirmCancel = document.createElement('button');
+  confirmCancel.type = 'button';
+  confirmCancel.textContent = 'Cancel';
+
+  const confirmSubmit = document.createElement('button');
+  confirmSubmit.type = 'button';
+  confirmSubmit.textContent = 'Trust and continue';
+
+  confirmActions.appendChild(confirmCancel);
+  confirmActions.appendChild(confirmSubmit);
+
+  const revealActions = document.createElement('div');
+  revealActions.className = 'ssh-connection-actions ssh-connection-reveal is-hidden';
+
+  const revealButton = document.createElement('button');
+  revealButton.type = 'button';
+  revealButton.textContent = 'Show terminal';
+  revealButton.addEventListener('click', () => {
+    revealSshTerminal(view);
+  });
+
+  revealActions.appendChild(revealButton);
+
+  content.appendChild(spinner);
+  content.appendChild(title);
+  content.appendChild(message);
+  content.appendChild(passwordForm);
+  content.appendChild(confirmActions);
+  content.appendChild(revealActions);
+  root.appendChild(content);
+  view.body.appendChild(root);
+
+  root.addEventListener('mousedown', (event) => {
+    event.stopPropagation();
+  });
+  root.addEventListener('click', (event) => {
+    event.stopPropagation();
+  });
+  root.addEventListener('wheel', (event) => {
+    event.stopPropagation();
+  }, { passive: true });
+
+  passwordForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const resolver = view.sshSession?.passwordResolver;
+    if (!resolver) {
+      return;
+    }
+    const password = passwordInput.value;
+    view.sshSession.passwordResolver = null;
+    resolver({
+      password,
+      savePassword: Boolean(savePassword.checked)
+    });
+  });
+
+  passwordCancel.addEventListener('click', () => {
+    const resolver = view.sshSession?.passwordResolver;
+    if (!resolver) {
+      return;
+    }
+    view.sshSession.passwordResolver = null;
+    resolver(null);
+  });
+
+  confirmSubmit.addEventListener('click', () => {
+    const resolver = view.sshSession?.hostKeyResolver;
+    if (!resolver) {
+      return;
+    }
+    view.sshSession.hostKeyResolver = null;
+    resolver(true);
+  });
+
+  confirmCancel.addEventListener('click', () => {
+    const resolver = view.sshSession?.hostKeyResolver;
+    if (!resolver) {
+      return;
+    }
+    view.sshSession.hostKeyResolver = null;
+    resolver(false);
+  });
+
+  view.sshOverlay = {
+    root,
+    spinner,
+    title,
+    message,
+    passwordForm,
+    passwordInput,
+    savePassword,
+    confirmActions,
+    revealActions
+  };
+  return view.sshOverlay;
+}
+
+function setSshOverlayMode(view, mode, {
+  title = 'Connecting',
+  message = 'Opening SSH session.'
+} = {}) {
+  const overlay = ensureSshConnectionOverlay(view);
+  if (!overlay) {
+    return;
+  }
+  view.wrapper?.classList.add('ssh-pending');
+  overlay.root.classList.remove('is-hidden');
+  overlay.root.dataset.mode = mode;
+  overlay.title.textContent = title;
+  overlay.message.textContent = message;
+  overlay.spinner.classList.toggle('is-hidden', mode !== 'loading');
+  overlay.passwordForm.classList.toggle('is-hidden', mode !== 'password');
+  overlay.confirmActions.classList.toggle('is-hidden', mode !== 'confirm');
+  overlay.revealActions.classList.toggle('is-hidden', mode !== 'loading');
+  if (mode === 'password') {
+    overlay.passwordInput.value = '';
+    overlay.savePassword.checked = false;
+    requestAnimationFrame(() => {
+      overlay.passwordInput.focus();
+    });
+  }
+}
+
+function revealSshTerminal(view) {
+  if (!view?.sshSession || view.closed) {
+    return;
+  }
+  if (view.sshSession.revealTimer) {
+    clearTimeout(view.sshSession.revealTimer);
+    view.sshSession.revealTimer = 0;
+  }
+  if (view.sshSession.forceRevealTimer) {
+    clearTimeout(view.sshSession.forceRevealTimer);
+    view.sshSession.forceRevealTimer = 0;
+  }
+  view.sshSession.completed = true;
+  view.sshSession.hiddenOutput = '';
+  view.isSshPendingTerminal = false;
+  view.pendingSshHiddenOutput = '';
+  view.wrapper?.classList.remove('ssh-pending');
+  view.sshOverlay?.root?.classList.add('is-hidden');
+  try {
+    withUnscaledTerminalLayout(() => {
+      fitTerminalToBody(view);
+      view.terminal.refresh(0, Math.max(0, view.terminal.rows - 1));
+      view.terminal.focus();
+    });
+  } catch (error) {
+    console.error('Failed to reveal SSH terminal', error);
+  }
+}
+
+function clearSshHandshakeOutput(view) {
+  if (!view?.terminal) {
+    return;
+  }
+  try {
+    if (typeof view.terminal.clear === 'function') {
+      view.terminal.clear();
+    } else {
+      view.terminal.write('\x1b[2J\x1b[3J\x1b[H');
+    }
+    view.history = '';
+  } catch (error) {
+    console.error('Failed to clear SSH handshake output', error);
+  }
+}
+
+function flushHiddenSshOutput(view) {
+  const session = view?.sshSession;
+  const output = `${view?.pendingSshHiddenOutput || ''}${session?.hiddenOutput || ''}`;
+  if (!output || view.closed) {
+    return;
+  }
+  if (session) {
+    session.hiddenOutput = '';
+  }
+  view.pendingSshHiddenOutput = '';
+  view.history = trimHistory((view.history || '') + output);
+  view.terminal.write(output);
+}
+
+function scheduleSshTerminalReveal(view, delay = 1400) {
+  const session = view?.sshSession;
+  if (!session || session.completed || session.promptActive || session.passwordResolver || session.hostKeyResolver) {
+    return;
+  }
+  if (session.revealTimer) {
+    clearTimeout(session.revealTimer);
+  }
+  session.revealTimer = window.setTimeout(() => {
+    session.revealTimer = 0;
+    revealSshTerminal(view);
+  }, delay);
+}
+
+function updateSshConnectionReveal(view, data) {
+  const session = view?.sshSession;
+  if (!session || session.completed || !session.commandSent) {
+    return;
+  }
+  const promptBuffer = view.sshPromptBuffer || data || '';
+  if (isSshPasswordPrompt(promptBuffer) || isSshHostKeyPrompt(promptBuffer)) {
+    if (session.revealTimer) {
+      clearTimeout(session.revealTimer);
+      session.revealTimer = 0;
+    }
+    return;
+  }
+
+  const text = stripAnsi(promptBuffer);
+  if (!session.remoteOutputStarted) {
+    const compactOutput = text.replace(/\s+/g, ' ').trim();
+    const compactCommand = String(session.command || '').replace(/\s+/g, ' ').trim();
+    if (compactOutput && compactCommand && compactOutput.includes(compactCommand) && compactOutput.length <= compactCommand.length + 80) {
+      return;
+    }
+    session.remoteOutputStarted = Boolean(compactOutput);
+  }
+  if (/permission denied|connection (?:closed|refused)|could not resolve hostname|no route to host|operation timed out/i.test(text)) {
+    flushHiddenSshOutput(view);
+    revealSshTerminal(view);
+    return;
+  }
+  if (looksLikeShellPrompt(text)) {
+    scheduleSshTerminalReveal(view, 180);
+    return;
+  }
+  scheduleSshTerminalReveal(view, session.passwordSubmitted ? 1400 : 2200);
+}
+
+function requestSshPasswordInTerminal(view) {
+  const session = view?.sshSession;
+  if (!session) {
+    return Promise.resolve(null);
+  }
+  setSshOverlayMode(view, 'password', {
+    title: 'Password required',
+    message: 'Enter the password for this SSH session.'
+  });
+  return new Promise((resolve) => {
+    session.passwordResolver = resolve;
+  });
+}
+
+function requestSshHostKeyConfirmation(view) {
+  const session = view?.sshSession;
+  if (!session) {
+    return Promise.resolve(false);
+  }
+  setSshOverlayMode(view, 'confirm', {
+    title: 'Host key check',
+    message: 'This server is not in known_hosts yet.'
+  });
+  return new Promise((resolve) => {
+    session.hostKeyResolver = resolve;
+  });
+}
+
+async function savePasswordForSshSession(view, password) {
+  const session = view?.sshSession;
+  if (!session || !password) {
+    return;
+  }
+
+  const existing = session.hostId
+    ? sshHosts.find((host) => String(host.id) === String(session.hostId)) || session.host
+    : null;
+  const parsed = parseSshCommand(session.command);
+  const payload = existing
+    ? {
+      ...existing,
+      password,
+      savePassword: true
+    }
+    : {
+      name: parsed?.host ? `${parsed.username ? `${parsed.username}@` : ''}${parsed.host}` : 'SSH Host',
+      host: parsed?.host || '',
+      port: parsed?.port || 22,
+      username: parsed?.username || '',
+      command: session.command,
+      password,
+      savePassword: true
+    };
+
+  if (!payload.host && !payload.command) {
+    window.alert('Cannot save this SSH password because the host could not be detected.');
+    return;
+  }
+
+  const result = await ipcRenderer.invoke('ssh:save', { host: payload });
+  if (!result?.ok) {
+    window.alert(result?.error || 'Failed to save SSH password securely');
+    return;
+  }
+
+  await refreshSshHosts();
+  if (result.host?.id) {
+    session.hostId = result.host.id;
+    session.host = result.host;
+  }
+}
+
+async function maybeHandleSshPasswordPrompt(view, data) {
+  if (!view?.sshSession || view.closed) {
+    return;
+  }
+  if (view.sshSession.completed && view.sshSession.passwordSubmitted) {
+    return;
+  }
+  view.sshPromptBuffer = `${view.sshPromptBuffer || ''}${data}`.slice(-800);
+  if (isSshHostKeyPrompt(view.sshPromptBuffer) && !view.sshSession.promptActive) {
+    const session = view.sshSession;
+    session.promptActive = true;
+    if (session.revealTimer) {
+      clearTimeout(session.revealTimer);
+      session.revealTimer = 0;
+    }
+    try {
+      const confirmed = await requestSshHostKeyConfirmation(view);
+      if (!confirmed) {
+        flushHiddenSshOutput(view);
+        revealSshTerminal(view);
+        return;
+      }
+      setSshOverlayMode(view, 'loading', {
+        title: 'Connecting',
+        message: 'Trusting host key and continuing.'
+      });
+      ipcRenderer.send('terminal:input', { id: view.id, data: 'yes\r' });
+      view.sshPromptBuffer = '';
+    } finally {
+      session.promptActive = false;
+    }
+    return;
+  }
+
+  if (!isSshPasswordPrompt(view.sshPromptBuffer) || view.sshSession.promptActive) {
+    updateSshConnectionReveal(view, data);
+    return;
+  }
+
+  const session = view.sshSession;
+  session.promptActive = true;
+  let shouldRevealAfterAuthWait = false;
+  if (session.revealTimer) {
+    clearTimeout(session.revealTimer);
+    session.revealTimer = 0;
+  }
+  try {
+    let password = '';
+    if (session.pendingPassword) {
+      password = session.pendingPassword;
+      session.pendingPassword = '';
+    } else if (session.hostId && !session.savedPasswordTried) {
+      session.savedPasswordTried = true;
+      const result = await ipcRenderer.invoke('ssh:get-password', session.hostId);
+      if (result?.ok && result.password) {
+        password = result.password;
+      } else if (result && result.ok === false) {
+        window.alert(result.error || 'Failed to read saved SSH password');
+      }
+    }
+
+    if (!password) {
+      const promptResult = await requestSshPasswordInTerminal(view);
+      if (!promptResult?.password) {
+        flushHiddenSshOutput(view);
+        revealSshTerminal(view);
+        return;
+      }
+      password = promptResult.password;
+      if (promptResult.savePassword && session.allowSavePrompt) {
+        await savePasswordForSshSession(view, password);
+      }
+    }
+
+    if (!view.closed) {
+      session.passwordSubmitted = true;
+      shouldRevealAfterAuthWait = true;
+      ipcRenderer.send('terminal:input', { id: view.id, data: `${password}\r` });
+      view.sshPromptBuffer = '';
+      clearSshHandshakeOutput(view);
+      revealSshTerminal(view);
+    }
+  } finally {
+    session.promptActive = false;
+    if (shouldRevealAfterAuthWait && !session.completed) {
+      revealSshTerminal(view);
+    }
+  }
 }
 
 function noteTextToHtml(value) {
@@ -1298,6 +2230,9 @@ function setScale(nextScale, origin = null) {
 function createTerminalWindow(id, left, top, width = 640, height = 420, options = {}) {
   const wrapper = document.createElement('div');
   wrapper.className = 'terminal-window';
+  if (options.sshPending) {
+    wrapper.classList.add('ssh-pending');
+  }
   wrapper.dataset.id = id;
   wrapper.dataset.x = String(left);
   wrapper.dataset.y = String(top);
@@ -1434,6 +2369,8 @@ function createTerminalWindow(id, left, top, width = 640, height = 420, options 
     body,
     status,
     statusLabel,
+    isSshPendingTerminal: Boolean(options.sshPending),
+    pendingSshHiddenOutput: '',
     history: trimHistory(options.history),
     persistedTitle: options.title || `Terminal #${id}`,
     resizeObserver: null,
@@ -1607,9 +2544,15 @@ function createTerminalWindow(id, left, top, width = 640, height = 420, options 
     finishTerminalTitleEdit(view);
   });
 
-  term.onFocus(() => {
-    bringTerminalToFront(view);
-  });
+  if (typeof term.onFocus === 'function') {
+    term.onFocus(() => {
+      bringTerminalToFront(view);
+    });
+  } else {
+    body.addEventListener('focusin', () => {
+      bringTerminalToFront(view);
+    });
+  }
 
   return view;
 }
@@ -1889,6 +2832,22 @@ function destroyTerminalWindow(id) {
     return;
   }
   view.closed = true;
+  if (view.sshSession?.revealTimer) {
+    clearTimeout(view.sshSession.revealTimer);
+    view.sshSession.revealTimer = 0;
+  }
+  if (view.sshSession?.forceRevealTimer) {
+    clearTimeout(view.sshSession.forceRevealTimer);
+    view.sshSession.forceRevealTimer = 0;
+  }
+  if (view.sshSession?.passwordResolver) {
+    view.sshSession.passwordResolver(null);
+    view.sshSession.passwordResolver = null;
+  }
+  if (view.sshSession?.hostKeyResolver) {
+    view.sshSession.hostKeyResolver(false);
+    view.sshSession.hostKeyResolver = null;
+  }
   view.terminal.dispose();
   ipcRenderer.send('terminal:close', String(id));
 
@@ -1930,7 +2889,7 @@ async function addTerminalAtPosition(left, top, width, height, options = {}) {
     applyViewportToolMode(TOOL_MODES.HOVER);
     return;
   }
-  createTerminalWindow(
+  const view = createTerminalWindow(
     String(result.id),
     left,
     top,
@@ -1939,6 +2898,7 @@ async function addTerminalAtPosition(left, top, width, height, options = {}) {
     options
   );
   applyViewportToolMode(TOOL_MODES.HOVER);
+  return view;
 }
 
 function startSelection(event) {
@@ -2066,7 +3026,7 @@ viewport.addEventListener('contextmenu', (event) => {
 });
 
 viewport.addEventListener('dblclick', (event) => {
-  if (event.target.closest('.terminal-window, #minimap, #tool-hub, #clipboard-hub, #app-menu, #app-brand, #context-menu, #dialog-overlay, .canvas-note, #zoom-bar')) {
+  if (event.target.closest('.terminal-window, #minimap, #tool-hub, #clipboard-hub, #ssh-panel, #ssh-panel-button, #app-menu, #app-brand, #context-menu, #dialog-overlay, .canvas-note, #zoom-bar')) {
     return;
   }
   if (isEmptyStateVisible()) {
@@ -2164,7 +3124,7 @@ if (dialogCancel) {
 
 if (dialogConfirm) {
   dialogConfirm.addEventListener('click', () => {
-    closeInputDialog(dialogInput?.value ?? '');
+    closeInputDialog(getDialogInputResult());
   });
 }
 
@@ -2172,7 +3132,7 @@ if (dialogInput) {
   dialogInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
-      closeInputDialog(dialogInput.value);
+      closeInputDialog(getDialogInputResult());
       return;
     }
     if (event.key === 'Escape') {
@@ -2310,6 +3270,87 @@ if (clipboardHideBtn) {
   });
 }
 
+if (sshPanelButton) {
+  sshPanelButton.addEventListener('mousedown', (event) => {
+    event.stopPropagation();
+  });
+  sshPanelButton.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    const shouldShow = sshPanel?.classList.contains('is-hidden');
+    setSshPanelVisible(shouldShow);
+    if (shouldShow) {
+      await refreshSshHosts();
+    }
+  });
+}
+
+if (sshPanel) {
+  sshPanel.addEventListener('mousedown', (event) => {
+    event.stopPropagation();
+  });
+  sshPanel.addEventListener('click', (event) => {
+    event.stopPropagation();
+  });
+  sshPanel.addEventListener('wheel', (event) => {
+    event.stopPropagation();
+  }, { passive: true });
+}
+
+if (sshPanelHideBtn) {
+  sshPanelHideBtn.addEventListener('click', () => {
+    setSshPanelVisible(false);
+  });
+}
+
+if (sshDirectConnectBtn) {
+  sshDirectConnectBtn.addEventListener('click', async () => {
+    const command = String(sshDirectCommand?.value || '').trim();
+    if (!command) {
+      window.alert('Enter an SSH command first');
+      return;
+    }
+    await connectSshCommand(command, { allowSavePrompt: true });
+  });
+}
+
+if (sshDirectCommand) {
+  sshDirectCommand.addEventListener('keydown', async (event) => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+    event.preventDefault();
+    const command = String(sshDirectCommand.value || '').trim();
+    if (command) {
+      await connectSshCommand(command, { allowSavePrompt: true });
+    }
+  });
+}
+
+if (sshNewHostBtn) {
+  sshNewHostBtn.addEventListener('click', () => {
+    showSshHostForm();
+  });
+}
+
+if (sshHostForm) {
+  sshHostForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    await saveSshHostFromForm();
+  });
+}
+
+if (sshHostConnectBtn) {
+  sshHostConnectBtn.addEventListener('click', async () => {
+    await saveSshHostFromForm({ connectAfter: true });
+  });
+}
+
+if (sshHostCancelBtn) {
+  sshHostCancelBtn.addEventListener('click', () => {
+    hideSshHostForm();
+  });
+}
+
 window.addEventListener('mousedown', (event) => {
   if (appMenu && appMenu.contains(event.target)) {
     return;
@@ -2328,7 +3369,7 @@ viewport.addEventListener('mousedown', (event) => {
   if (!event.target.closest('.canvas-note')) {
     clearNoteSelection();
   }
-  if (event.target.closest('.terminal-close, #minimap, #tool-hub, #clipboard-hub, #context-menu, #selection-overlay, #app-menu, #app-brand, #dialog-overlay, #zoom-bar')) {
+  if (event.target.closest('.terminal-close, #minimap, #tool-hub, #clipboard-hub, #ssh-panel, #ssh-panel-button, #context-menu, #selection-overlay, #app-menu, #app-brand, #dialog-overlay, #zoom-bar')) {
     return;
   }
   if (isEmptyStateVisible()) {
@@ -2563,8 +3604,24 @@ ipcRenderer.on('terminal:data', (_event, payload) => {
   const data = payload?.data ?? '';
   const view = terminalViews.get(String(payload?.id));
   if (!view || view.closed) return;
+
+  if ((view.isSshPendingTerminal || view.sshSession) && !view.sshSession?.completed) {
+    if (view.sshSession) {
+      view.sshSession.hiddenOutput = `${view.sshSession.hiddenOutput || ''}${data}`.slice(-20000);
+      maybeHandleSshPasswordPrompt(view, data).catch((error) => {
+        console.error('SSH password prompt handling failed:', error);
+      });
+    } else {
+      view.pendingSshHiddenOutput = `${view.pendingSshHiddenOutput || ''}${data}`.slice(-20000);
+    }
+    return;
+  }
+
   view.history = trimHistory((view.history || '') + data);
   view.terminal.write(data);
+  maybeHandleSshPasswordPrompt(view, data).catch((error) => {
+    console.error('SSH password prompt handling failed:', error);
+  });
 });
 
 ipcRenderer.on('terminal:exit', (_event, payload) => {
@@ -2592,6 +3649,9 @@ updateZoomBar();
 setEmptyStateArmed(true);
 updateProtip();
 renderClipboardHub();
+refreshSshHosts().catch((error) => {
+  console.error('Failed to load SSH hosts:', error);
+});
 setPreviewVisible(false);
 setClipboardVisible(true);
 if (zoomProtip) {

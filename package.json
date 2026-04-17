@@ -1,6 +1,6 @@
 {
   "name": "vibe-atlas",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Manage multiple terminals on a shared canvas for batch vibe coding.",
   "private": true,
   "author": {

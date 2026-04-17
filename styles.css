@@ -563,9 +563,36 @@ body,
   font-family: var(--app-font);
 }
 
-#clipboard-clear:hover {
+.clipboard-hub-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+#clipboard-hide {
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 10px;
+  background: #262626;
+  color: #d8d8d8;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: var(--app-font);
+}
+
+#clipboard-clear.confirming {
+  background: #513131;
+  color: #ffffff;
+}
+
+#clipboard-clear:hover,
+#clipboard-hide:hover {
   background: #323232;
   color: #ffffff;
+}
+
+#clipboard-clear.confirming:hover {
+  background: #623a3a;
 }
 
 .clipboard-list {

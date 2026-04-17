@@ -35,6 +35,7 @@ const clipboardHub = document.getElementById('clipboard-hub');
 const clipboardCount = document.getElementById('clipboard-count');
 const clipboardList = document.getElementById('clipboard-list');
 const clipboardClearBtn = document.getElementById('clipboard-clear');
+const clipboardHideBtn = document.getElementById('clipboard-hide');
 const emptyState = document.getElementById('empty-state');
 const emptyStateNewTerminalBtn = document.getElementById('empty-state-new-terminal');
 const emptyStateNewNoteBtn = document.getElementById('empty-state-new-note');
@@ -100,6 +101,7 @@ let activeToolMode = TOOL_MODES.HOVER;
 let saveIndicatorTimer = 0;
 let protipIndex = 0;
 let terminalWindowResizeTimer = 0;
+let clipboardClearConfirmTimer = 0;
 let clipboardSeq = 1;
 let clipboardEntries = [];
 
@@ -2277,9 +2279,34 @@ if (clipboardHub) {
 
 if (clipboardClearBtn) {
   clipboardClearBtn.addEventListener('click', () => {
+    if (!clipboardClearBtn.classList.contains('confirming')) {
+      clipboardClearBtn.classList.add('confirming');
+      clipboardClearBtn.textContent = 'Confirm';
+      if (clipboardClearConfirmTimer) {
+        clearTimeout(clipboardClearConfirmTimer);
+      }
+      clipboardClearConfirmTimer = window.setTimeout(() => {
+        clipboardClearConfirmTimer = 0;
+        clipboardClearBtn.classList.remove('confirming');
+        clipboardClearBtn.textContent = 'Clear';
+      }, 2200);
+      return;
+    }
+    if (clipboardClearConfirmTimer) {
+      clearTimeout(clipboardClearConfirmTimer);
+      clipboardClearConfirmTimer = 0;
+    }
+    clipboardClearBtn.classList.remove('confirming');
+    clipboardClearBtn.textContent = 'Clear';
     clipboardEntries = [];
     renderClipboardHub();
     scheduleWorkspaceAutoSave();
+  });
+}
+
+if (clipboardHideBtn) {
+  clipboardHideBtn.addEventListener('click', () => {
+    setClipboardVisible(false);
   });
 }
 

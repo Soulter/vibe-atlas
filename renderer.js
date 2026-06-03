@@ -19,6 +19,7 @@ const viewport = document.getElementById('viewport');
 const canvas = document.getElementById('canvas');
 const minimap = document.getElementById('minimap');
 const minimapWorld = document.getElementById('minimap-world');
+const minimapItems = document.getElementById('minimap-items');
 const minimapViewport = document.getElementById('minimap-viewport');
 const appMenu = document.getElementById('app-menu');
 const appMenuButton = document.getElementById('app-menu-button');
@@ -89,6 +90,7 @@ const MAX_CLIPBOARD_ENTRIES = 100;
 const defaultNoteColor = '#ffffff';
 const defaultNoteFontSize = 16;
 const terminalFontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+const canvasViewMargin = 72;
 
 let dragging = null;
 let resizing = null;
@@ -1799,6 +1801,77 @@ function hideSelectionBox() {
   selectionBox.style.height = '0px';
 }
 
+function toFiniteNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function clampWorldRect(left, top, width, height, options = {}) {
+  const minWidth = toFiniteNumber(options.minWidth, 1);
+  const minHeight = toFiniteNumber(options.minHeight, 1);
+  const safeWidth = clamp(toFiniteNumber(width, minWidth), minWidth, WORLD_WIDTH);
+  const safeHeight = clamp(toFiniteNumber(height, minHeight), minHeight, WORLD_HEIGHT);
+  const maxLeft = Math.max(0, WORLD_WIDTH - safeWidth);
+  const maxTop = Math.max(0, WORLD_HEIGHT - safeHeight);
+
+  return {
+    left: clamp(toFiniteNumber(left, 0), 0, maxLeft),
+    top: clamp(toFiniteNumber(top, 0), 0, maxTop),
+    width: safeWidth,
+    height: safeHeight
+  };
+}
+
+function getPanBounds(scaleValue = scale) {
+  const nextScale = Math.max(minScale, toFiniteNumber(scaleValue, scale));
+  const scaledWorldWidth = WORLD_WIDTH * nextScale;
+  const scaledWorldHeight = WORLD_HEIGHT * nextScale;
+  const viewportWidth = viewport.clientWidth || 0;
+  const viewportHeight = viewport.clientHeight || 0;
+
+  if (viewportWidth <= 0 || viewportHeight <= 0) {
+    return {
+      minX: panX,
+      maxX: panX,
+      minY: panY,
+      maxY: panY
+    };
+  }
+
+  const minX = viewportWidth - scaledWorldWidth - canvasViewMargin;
+  const maxX = canvasViewMargin;
+  const minY = viewportHeight - scaledWorldHeight - canvasViewMargin;
+  const maxY = canvasViewMargin;
+
+  return {
+    minX: scaledWorldWidth + canvasViewMargin * 2 <= viewportWidth
+      ? (viewportWidth - scaledWorldWidth) / 2
+      : minX,
+    maxX: scaledWorldWidth + canvasViewMargin * 2 <= viewportWidth
+      ? (viewportWidth - scaledWorldWidth) / 2
+      : maxX,
+    minY: scaledWorldHeight + canvasViewMargin * 2 <= viewportHeight
+      ? (viewportHeight - scaledWorldHeight) / 2
+      : minY,
+    maxY: scaledWorldHeight + canvasViewMargin * 2 <= viewportHeight
+      ? (viewportHeight - scaledWorldHeight) / 2
+      : maxY
+  };
+}
+
+function clampPanPoint(x, y, scaleValue = scale) {
+  const bounds = getPanBounds(scaleValue);
+  return {
+    x: clamp(toFiniteNumber(x, panX), bounds.minX, bounds.maxX),
+    y: clamp(toFiniteNumber(y, panY), bounds.minY, bounds.maxY)
+  };
+}
+
+function syncCanvasDimensions() {
+  canvas.style.width = `${WORLD_WIDTH}px`;
+  canvas.style.height = `${WORLD_HEIGHT}px`;
+}
+
 function getMiniMapScale() {
   const usableWidth = minimapWorld.clientWidth;
   const usableHeight = minimapWorld.clientHeight;
@@ -1817,12 +1890,16 @@ function worldRectToScreenRect() {
   const worldY = (-panY) / scale;
   const worldW = viewport.clientWidth / scale;
   const worldH = viewport.clientHeight / scale;
+  const left = clamp(worldX, 0, WORLD_WIDTH);
+  const top = clamp(worldY, 0, WORLD_HEIGHT);
+  const right = clamp(worldX + worldW, 0, WORLD_WIDTH);
+  const bottom = clamp(worldY + worldH, 0, WORLD_HEIGHT);
 
   return {
-    x: clamp(worldX, 0, WORLD_WIDTH),
-    y: clamp(worldY, 0, WORLD_HEIGHT),
-    w: clamp(worldW, 0, WORLD_WIDTH - clamp(worldX, 0, WORLD_WIDTH)),
-    h: clamp(worldH, 0, WORLD_HEIGHT - clamp(worldY, 0, WORLD_HEIGHT))
+    x: left,
+    y: top,
+    w: Math.max(0, right - left),
+    h: Math.max(0, bottom - top)
   };
 }
 
@@ -1927,6 +2004,52 @@ function viewportRectInMinimap() {
   };
 }
 
+function appendMiniMapItem(fragment, rect, className) {
+  const { mapScale, insetX, insetY } = getMiniMapScale();
+  if (!Number.isFinite(mapScale) || mapScale <= 0) {
+    return;
+  }
+  const worldRect = clampWorldRect(rect.left, rect.top, rect.width, rect.height);
+  const item = document.createElement('div');
+  item.className = `minimap-item ${className}`;
+  item.style.left = `${insetX + worldRect.left * mapScale}px`;
+  item.style.top = `${insetY + worldRect.top * mapScale}px`;
+  item.style.width = `${Math.max(3, worldRect.width * mapScale)}px`;
+  item.style.height = `${Math.max(3, worldRect.height * mapScale)}px`;
+  fragment.appendChild(item);
+}
+
+function renderMiniMapItems() {
+  if (!minimapItems) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  terminalViews.forEach((view) => {
+    if (!view?.wrapper) {
+      return;
+    }
+    appendMiniMapItem(fragment, {
+      left: Number(view.wrapper.dataset.x) || 0,
+      top: Number(view.wrapper.dataset.y) || 0,
+      width: view.wrapper.offsetWidth || 640,
+      height: view.wrapper.offsetHeight || 420
+    }, 'minimap-terminal');
+  });
+  noteViews.forEach((view) => {
+    if (!view?.el) {
+      return;
+    }
+    appendMiniMapItem(fragment, {
+      left: Number(view.el.dataset.x) || 0,
+      top: Number(view.el.dataset.y) || 0,
+      width: view.el.offsetWidth || 220,
+      height: view.el.offsetHeight || Math.max(28, view.content?.offsetHeight || 28)
+    }, 'minimap-note');
+  });
+  minimapItems.replaceChildren(fragment);
+}
+
 function isPointInsideRect(x, y, rect) {
   return x >= rect.left
     && x <= rect.left + rect.width
@@ -1935,6 +2058,7 @@ function isPointInsideRect(x, y, rect) {
 }
 
 function updateMiniMap() {
+  renderMiniMapItems();
   const mapRect = viewportRectInMinimap();
   minimapViewport.style.left = `${mapRect.left}px`;
   minimapViewport.style.top = `${mapRect.top}px`;
@@ -1961,6 +2085,9 @@ function minimapToWorld(clientX, clientY) {
   const x = clientX - rect.left;
   const y = clientY - rect.top;
   const { mapScale, insetX, insetY } = getMiniMapScale();
+  if (!Number.isFinite(mapScale) || mapScale <= 0) {
+    return { x: 0, y: 0 };
+  }
   return {
     x: clamp((x - insetX) / mapScale, 0, WORLD_WIDTH),
     y: clamp((y - insetY) / mapScale, 0, WORLD_HEIGHT)
@@ -2182,17 +2309,14 @@ function scheduleFit(view) {
 
 function applyTransform() {
   canvas.style.transform = getCanvasTransformValue(scale);
-  const grid = baseGridSize * scale;
-  viewport.style.backgroundSize = `${grid}px ${grid}px`;
-  const offsetX = ((panX % grid) + grid) % grid;
-  const offsetY = ((panY % grid) + grid) % grid;
-  viewport.style.backgroundPosition = `${offsetX}px ${offsetY}px`;
+  canvas.style.backgroundSize = `${baseGridSize}px ${baseGridSize}px`;
   updateMiniMap();
 }
 
 function setPan(x, y) {
-  panX = x;
-  panY = y;
+  const clamped = clampPanPoint(x, y);
+  panX = clamped.x;
+  panY = clamped.y;
   applyTransform();
 }
 
@@ -2203,9 +2327,13 @@ function resetViewport() {
 
 function restoreViewportState(viewportState = {}, options = {}) {
   const allowScale = options.allowScale !== false;
-  scale = allowScale && Number.isFinite(Number(viewportState.scale))
-    ? Number(viewportState.scale)
-    : 1;
+  scale = clamp(
+    allowScale && Number.isFinite(Number(viewportState.scale))
+      ? Number(viewportState.scale)
+      : 1,
+    minScale,
+    maxScale
+  );
   setPan(
     Number.isFinite(Number(viewportState.panX)) ? Number(viewportState.panX) : 40,
     Number.isFinite(Number(viewportState.panY)) ? Number(viewportState.panY) : 40
@@ -2220,26 +2348,35 @@ function setScale(nextScale, origin = null) {
     originInView.x + viewport.getBoundingClientRect().left,
     originInView.y + viewport.getBoundingClientRect().top
   );
-  panX = originInView.x - world.x * clamped;
-  panY = originInView.y - world.y * clamped;
+  const nextPan = clampPanPoint(
+    originInView.x - world.x * clamped,
+    originInView.y - world.y * clamped,
+    clamped
+  );
+  panX = nextPan.x;
+  panY = nextPan.y;
   scale = clamped;
   applyTransform();
   updateZoomBar();
 }
 
 function createTerminalWindow(id, left, top, width = 640, height = 420, options = {}) {
+  const initialRect = clampWorldRect(left, top, width, height, {
+    minWidth: 360,
+    minHeight: 220
+  });
   const wrapper = document.createElement('div');
   wrapper.className = 'terminal-window';
   if (options.sshPending) {
     wrapper.classList.add('ssh-pending');
   }
   wrapper.dataset.id = id;
-  wrapper.dataset.x = String(left);
-  wrapper.dataset.y = String(top);
-  wrapper.style.left = `${left}px`;
-  wrapper.style.top = `${top}px`;
-  wrapper.style.width = `${Math.max(360, width)}px`;
-  wrapper.style.height = `${Math.max(220, height)}px`;
+  wrapper.dataset.x = String(initialRect.left);
+  wrapper.dataset.y = String(initialRect.top);
+  wrapper.style.left = `${initialRect.left}px`;
+  wrapper.style.top = `${initialRect.top}px`;
+  wrapper.style.width = `${initialRect.width}px`;
+  wrapper.style.height = `${initialRect.height}px`;
 
   const header = document.createElement('div');
   header.className = 'terminal-header';
@@ -2385,6 +2522,7 @@ function createTerminalWindow(id, left, top, width = 640, height = 420, options 
   applyTerminalStatus(view, 'idle');
   consumeEmptyState();
   updateEmptyState();
+  updateMiniMap();
   scheduleWorkspaceAutoSave();
 
   const recoverableHistory = getRecoverableTerminalHistory(view.history);
@@ -2625,6 +2763,7 @@ function removeCanvasNote(id) {
     selectedNoteId = null;
   }
   updateEmptyState();
+  updateMiniMap();
   scheduleWorkspaceAutoSave();
 }
 
@@ -2674,14 +2813,18 @@ function beginNoteDragIntent(view, event) {
 
 function createCanvasNote(left, top, text = '', width = 220, options = {}) {
   const id = `note-${noteSeq++}`;
+  const initialRect = clampWorldRect(left, top, width, 28, {
+    minWidth: 120,
+    minHeight: 28
+  });
   const el = document.createElement('div');
   el.className = 'canvas-note';
   el.dataset.id = id;
-  el.dataset.x = String(left);
-  el.dataset.y = String(top);
-  el.style.left = `${left}px`;
-  el.style.top = `${top}px`;
-  el.style.width = `${Math.max(120, width)}px`;
+  el.dataset.x = String(initialRect.left);
+  el.dataset.y = String(initialRect.top);
+  el.style.left = `${initialRect.left}px`;
+  el.style.top = `${initialRect.top}px`;
+  el.style.width = `${initialRect.width}px`;
   el.style.zIndex = String(Number.isFinite(Number(options.zIndex)) ? Number(options.zIndex) : 5);
 
   const toolbar = document.createElement('div');
@@ -2743,12 +2886,30 @@ function createCanvasNote(left, top, text = '', width = 220, options = {}) {
   noteViews.set(id, view);
   applyNoteStyle(view);
   syncNoteHeight(content);
+  const fittedRect = clampWorldRect(initialRect.left, initialRect.top, initialRect.width, el.offsetHeight || 28, {
+    minWidth: 120,
+    minHeight: 28
+  });
+  el.style.left = `${fittedRect.left}px`;
+  el.style.top = `${fittedRect.top}px`;
+  el.dataset.x = String(fittedRect.left);
+  el.dataset.y = String(fittedRect.top);
   consumeEmptyState();
   updateEmptyState();
+  updateMiniMap();
   scheduleWorkspaceAutoSave();
 
   content.addEventListener('input', () => {
     syncNoteHeight(content);
+    const fittedRect = clampWorldRect(Number(el.dataset.x) || 0, Number(el.dataset.y) || 0, el.offsetWidth || 220, el.offsetHeight || 28, {
+      minWidth: 120,
+      minHeight: 28
+    });
+    el.style.left = `${fittedRect.left}px`;
+    el.style.top = `${fittedRect.top}px`;
+    el.dataset.x = String(fittedRect.left);
+    el.dataset.y = String(fittedRect.top);
+    updateMiniMap();
     scheduleWorkspaceAutoSave();
   });
 
@@ -2766,7 +2927,16 @@ function createCanvasNote(left, top, text = '', width = 220, options = {}) {
     view.fontSize = Math.max(12, view.fontSize - 2);
     applyNoteStyle(view);
     syncNoteHeight(content);
+    const fittedRect = clampWorldRect(Number(el.dataset.x) || 0, Number(el.dataset.y) || 0, el.offsetWidth || 220, el.offsetHeight || 28, {
+      minWidth: 120,
+      minHeight: 28
+    });
+    el.style.left = `${fittedRect.left}px`;
+    el.style.top = `${fittedRect.top}px`;
+    el.dataset.x = String(fittedRect.left);
+    el.dataset.y = String(fittedRect.top);
     selectNote(view);
+    updateMiniMap();
     scheduleWorkspaceAutoSave();
   });
 
@@ -2775,7 +2945,16 @@ function createCanvasNote(left, top, text = '', width = 220, options = {}) {
     view.fontSize = Math.min(64, view.fontSize + 2);
     applyNoteStyle(view);
     syncNoteHeight(content);
+    const fittedRect = clampWorldRect(Number(el.dataset.x) || 0, Number(el.dataset.y) || 0, el.offsetWidth || 220, el.offsetHeight || 28, {
+      minWidth: 120,
+      minHeight: 28
+    });
+    el.style.left = `${fittedRect.left}px`;
+    el.style.top = `${fittedRect.top}px`;
+    el.dataset.x = String(fittedRect.left);
+    el.dataset.y = String(fittedRect.top);
     selectNote(view);
+    updateMiniMap();
     scheduleWorkspaceAutoSave();
   });
 
@@ -2866,6 +3045,7 @@ function destroyTerminalWindow(id) {
   terminalViews.delete(String(id));
   document.body.style.userSelect = '';
   updateEmptyState();
+  updateMiniMap();
   scheduleWorkspaceAutoSave();
 }
 
@@ -2873,7 +3053,11 @@ function getViewportCenterWorldPoint() {
   const rect = viewport.getBoundingClientRect();
   const x = (-panX + rect.width / 2) / scale - 320;
   const y = (-panY + rect.height / 2) / scale - 210;
-  return { x, y };
+  const worldRect = clampWorldRect(x, y, 640, 420, {
+    minWidth: 360,
+    minHeight: 220
+  });
+  return { x: worldRect.left, y: worldRect.top };
 }
 
 async function addTerminalAtPosition(left, top, width, height, options = {}) {
@@ -3487,9 +3671,20 @@ window.addEventListener('mousemove', (event) => {
       noteResizing = null;
       return;
     }
-    const nextWidth = Math.max(120, Math.min(640, noteResizing.width + ((event.clientX - noteResizing.startClientX) / scale)));
+    const left = Number(view.el.dataset.x) || 0;
+    const maxWidth = Math.max(120, Math.min(640, WORLD_WIDTH - left));
+    const nextWidth = clamp(noteResizing.width + ((event.clientX - noteResizing.startClientX) / scale), 120, maxWidth);
     view.el.style.width = `${nextWidth}px`;
     syncNoteHeight(view.content);
+    const fittedRect = clampWorldRect(left, Number(view.el.dataset.y) || 0, view.el.offsetWidth || 220, view.el.offsetHeight || 28, {
+      minWidth: 120,
+      minHeight: 28
+    });
+    view.el.style.left = `${fittedRect.left}px`;
+    view.el.style.top = `${fittedRect.top}px`;
+    view.el.dataset.x = String(fittedRect.left);
+    view.el.dataset.y = String(fittedRect.top);
+    updateMiniMap();
     return;
   }
 
@@ -3521,10 +3716,15 @@ window.addEventListener('mousemove', (event) => {
     const pointer = toWorldPoint(event.clientX, event.clientY);
     const nextLeft = noteDragging.left + (pointer.x - noteDragging.pointerWorld.x);
     const nextTop = noteDragging.top + (pointer.y - noteDragging.pointerWorld.y);
-    el.style.left = `${nextLeft}px`;
-    el.style.top = `${nextTop}px`;
-    el.dataset.x = String(nextLeft);
-    el.dataset.y = String(nextTop);
+    const rect = clampWorldRect(nextLeft, nextTop, el.offsetWidth || 220, el.offsetHeight || 28, {
+      minWidth: 120,
+      minHeight: 28
+    });
+    el.style.left = `${rect.left}px`;
+    el.style.top = `${rect.top}px`;
+    el.dataset.x = String(rect.left);
+    el.dataset.y = String(rect.top);
+    updateMiniMap();
     return;
   }
 
@@ -3535,10 +3735,13 @@ window.addEventListener('mousemove', (event) => {
       resizing = null;
       return;
     }
-    const nextWidth = Math.max(360, resizing.width + ((event.clientX - resizing.startX) / scale));
-    const nextHeight = Math.max(220, resizing.height + ((event.clientY - resizing.startY) / scale));
+    const left = Number(wrapper.dataset.x) || 0;
+    const top = Number(wrapper.dataset.y) || 0;
+    const nextWidth = clamp(resizing.width + ((event.clientX - resizing.startX) / scale), 360, Math.max(360, WORLD_WIDTH - left));
+    const nextHeight = clamp(resizing.height + ((event.clientY - resizing.startY) / scale), 220, Math.max(220, WORLD_HEIGHT - top));
     wrapper.style.width = `${nextWidth}px`;
     wrapper.style.height = `${nextHeight}px`;
+    updateMiniMap();
     scheduleFit(view);
     return;
   }
@@ -3552,10 +3755,15 @@ window.addEventListener('mousemove', (event) => {
     const pointer = toWorldPoint(event.clientX, event.clientY);
     const nextLeft = dragging.left + (pointer.x - dragging.pointerWorld.x);
     const nextTop = dragging.top + (pointer.y - dragging.pointerWorld.y);
-    el.style.left = `${nextLeft}px`;
-    el.style.top = `${nextTop}px`;
-    el.dataset.x = String(nextLeft);
-    el.dataset.y = String(nextTop);
+    const rect = clampWorldRect(nextLeft, nextTop, el.offsetWidth || 640, el.offsetHeight || 420, {
+      minWidth: 360,
+      minHeight: 220
+    });
+    el.style.left = `${rect.left}px`;
+    el.style.top = `${rect.top}px`;
+    el.dataset.x = String(rect.left);
+    el.dataset.y = String(rect.top);
+    updateMiniMap();
     return;
   }
 
@@ -3641,6 +3849,7 @@ ipcRenderer.on('terminal:status', (_event, payload) => {
   applyTerminalStatus(view, payload?.status || 'idle');
 });
 
+syncCanvasDimensions();
 setPan(40, 40);
 applyViewportToolMode(activeToolMode);
 applyThemeToAllTerminals();
@@ -3710,7 +3919,7 @@ window.addEventListener('mouseup', () => {
 });
 
 window.addEventListener('resize', () => {
-  applyTransform();
+  setPan(panX, panY);
   terminalViews.forEach((view) => {
     scheduleForceTerminalLayoutRefresh(view);
   });

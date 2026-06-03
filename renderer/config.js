@@ -2,8 +2,8 @@ const minScale = 0.35;
 const maxScale = 2.2;
 const zoomStep = 1.6;
 const baseGridSize = 40;
-const WORLD_WIDTH = 8000;
-const WORLD_HEIGHT = 6000;
+const WORLD_WIDTH = 4800;
+const WORLD_HEIGHT = 3200;
 const UNTITLED_WORKSPACE = 'Untitled Workspace';
 
 const TOOL_MODES = {

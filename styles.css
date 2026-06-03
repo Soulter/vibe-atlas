@@ -30,8 +30,6 @@ body,
   overflow: hidden;
   cursor: default;
   background-color: #111111;
-  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0MCcgaGVpZ2h0PSc0MCcgdmlld0JveD0nMCAwIDQwIDQwJz48bGluZSB4MT0nMCcgeTE9JzAnIHgyPSc0MCcgeTI9JzAnIHN0cm9rZT0nI2ZmZmZmZicgc3Ryb2tlLXdpZHRoPScxJyBvcGFjaXR5PScwLjA2Jy8+PGxpbmUgeDE9JzAnIHkxPScwJyB4Mj0nMCcgeTI9JzQwJyBzdHJva2U9JyNmZmZmZmYnIHN0cm9rZS13aWR0aD0nMScgb3BhY2l0eT0nMC4wNicvPjwvc3ZnPg==");
-  background-repeat: repeat;
 }
 
 #viewport.panning {
@@ -86,10 +84,36 @@ body,
 
 #minimap-viewport {
   position: absolute;
+  z-index: 2;
   border: 1px solid rgba(255, 255, 255, 0.78);
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.14);
   pointer-events: none;
+}
+
+#minimap-items {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.minimap-item {
+  position: absolute;
+  min-width: 3px;
+  min-height: 3px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.minimap-terminal {
+  border: 1px solid rgba(88, 166, 255, 0.86);
+  background: rgba(88, 166, 255, 0.38);
+}
+
+.minimap-note {
+  border: 1px solid rgba(255, 214, 102, 0.70);
+  background: rgba(255, 214, 102, 0.24);
 }
 
 #minimap-world,
@@ -1095,11 +1119,16 @@ body,
 
 #canvas {
   position: absolute;
-  width: 8000px;
-  height: 6000px;
+  width: 4800px;
+  height: 3200px;
   transform: translate(0px, 0px);
   transform-origin: 0 0;
   will-change: transform;
+  background-color: #121212;
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0MCcgaGVpZ2h0PSc0MCcgdmlld0JveD0nMCAwIDQwIDQwJz48bGluZSB4MT0nMCcgeTE9JzAnIHgyPSc0MCcgeTI9JzAnIHN0cm9rZT0nI2ZmZmZmZicgc3Ryb2tlLXdpZHRoPScxJyBvcGFjaXR5PScwLjA2Jy8+PGxpbmUgeDE9JzAnIHkxPScwJyB4Mj0nMCcgeTI9JzQwJyBzdHJva2U9JyNmZmZmZmYnIHN0cm9rZS13aWR0aD0nMScgb3BhY2l0eT0nMC4wNicvPjwvc3ZnPg==");
+  background-repeat: repeat;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.24), 0 20px 70px rgba(0, 0, 0, 0.32);
 }
 
 .terminal-window {
